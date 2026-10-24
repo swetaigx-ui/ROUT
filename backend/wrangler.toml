@@ -8,7 +8,7 @@ id = "REPLACE_WITH_PRODUCTION_KV_ID"
 preview_id = "rout-preview-kv"
 
 [vars]
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.8-flash"
 RATE_LIMIT_PER_MINUTE = "30"
 # Secrets (GEMINI_API_KEY) are set via `wrangler secret put` - never in this file.
 
