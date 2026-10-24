@@ -147,6 +147,65 @@ async function handleOauthCallback(request, url, env) {
     { status: 200, headers: { 'Content-Type': 'text/html', 'Set-Cookie': 'rout_oauth=; Max-Age=0; Path=/oauth; Secure; HttpOnly', 'Cache-Control': 'no-store' } });
 }
 
+// ---- Live speech-to-speech: authenticated WebSocket relay to Gemini Live ----
+// The client may only send realtimeInput (mic audio / text). Model, voice, system
+// prompt and tools are fixed here, so a device token cannot reconfigure the session.
+const LIVE_SYSTEM = 'You are ROUT, a warm, soft-spoken personal voice assistant. The user speaks Hindi, Hinglish and English; reply in the language they used. Keep replies short and natural for speech. You cannot operate the phone from this voice session; if asked to do a phone action, say the user can ask ROUT by command.';
+const LIVE_MAX_MS = 10 * 60 * 1000;
+
+async function handleLive(request, env) {
+  if ((request.headers.get('upgrade') || '').toLowerCase() !== 'websocket') return json({ error: 'upgrade_required' }, 426);
+  if (!env.GEMINI_API_KEY) return json({ error: 'ai_not_configured' }, 503);
+  const protos = (request.headers.get('sec-websocket-protocol') || '').split(',').map(x => x.trim());
+  const protoTok = (protos.find(p => p.startsWith('bearer.')) || '').slice(7);
+  const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '') || protoTok;
+  if (!(await deviceValid(env, token))) return json({ error: 'unauthorized' }, 401);
+  if (await rateLimited(env.ROUT_KV, 'live:' + await sha256(token), parseInt(env.LIVE_SESSIONS_PER_MINUTE || '6', 10))) {
+    return json({ error: 'rate_limited' }, 429);
+  }
+  const model = env.LIVE_MODEL || 'gemini-3.8-live';
+  const up = await fetch(
+    'https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=' + encodeURIComponent(env.GEMINI_API_KEY),
+    { headers: { Upgrade: 'websocket' } });
+  const upstream = up.webSocket;
+  if (!upstream) return json({ error: 'upstream_error' }, 502);
+  upstream.accept();
+  const pair = new WebSocketPair();
+  const client = pair[1];
+  client.accept();
+  upstream.send(JSON.stringify({ setup: {
+    model: 'models/' + model,
+    generationConfig: { responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: env.TTS_VOICE || 'Achernar' } } } },
+    systemInstruction: { parts: [{ text: LIVE_SYSTEM }] },
+    inputAudioTranscription: {}, outputAudioTranscription: {}
+  } }));
+  const closeBoth = (code, reason) => {
+    try { client.close(code, reason); } catch (e) {}
+    try { upstream.close(1000, 'done'); } catch (e) {}
+  };
+  const timer = setTimeout(() => closeBoth(1000, 'session_limit'), LIVE_MAX_MS);
+  client.addEventListener('message', (ev) => {
+    if (typeof ev.data !== 'string' || ev.data.length > 200000) return;
+    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    // whitelist: only realtimeInput passes
+    if (m && m.realtimeInput && Object.keys(m).length === 1) { try { upstream.send(ev.data); } catch (e) {} }
+  });
+  upstream.addEventListener('message', async (ev) => {
+    try {
+      let d = ev.data;
+      if (typeof d !== 'string') d = (d && typeof d.text === 'function') ? await d.text() : new TextDecoder().decode(d);
+      client.send(d);
+    } catch (e) {}
+  });
+  client.addEventListener('close', () => { clearTimeout(timer); try { upstream.close(1000, 'client_closed'); } catch (e) {} });
+  upstream.addEventListener('close', () => { clearTimeout(timer); try { client.close(1000, 'upstream_closed'); } catch (e) {} });
+  upstream.addEventListener('error', () => closeBoth(1011, 'upstream_error'));
+  const headers = {};
+  if (protos.includes('rout-live')) headers['Sec-WebSocket-Protocol'] = 'rout-live';
+  return new Response(null, { status: 101, webSocket: pair[0], headers });
+}
+
 async function handleApprove(request, url, env) {
   const id = url.searchParams.get('id') || '';
   const store = enrollStore(env);
@@ -387,6 +446,7 @@ export default {
       if (request.method === 'POST' && url.pathname === '/v1/enroll/start') {
         return await handleEnrollStart(request, env);
       }
+      if (url.pathname === '/v1/live') return await handleLive(request, env);
       if (request.method === 'GET' && url.pathname === '/oauth/start') return await handleOauthStart(request, url, env);
       if (request.method === 'GET' && url.pathname === '/oauth/callback') return await handleOauthCallback(request, url, env);
       if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/approve') {
