@@ -31,8 +31,8 @@ Hinglish and English. Package: `com.rout.aiassistant`.
 - **Media control** (play/pause/skip): needs notification access, enabled by you in
   system settings. ROUT does not read notification contents.
 - **Hey ROUT wake phrase**: runs as a foreground listening session you start, with a
-  visible notification. Android (12+/15) does not allow always-on background
-  microphone wake words, and ROUT does not fake one.
+  visible notification. this build has no always-on background wake word
+  (current implementation limit, not faked).
 - **Brightness**: changing it directly needs Android's "Modify system settings"
   grant; otherwise ROUT opens the right settings page.
 - **Floating orb**: needs the overlay permission you grant explicitly.
