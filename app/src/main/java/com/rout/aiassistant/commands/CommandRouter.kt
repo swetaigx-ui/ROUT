@@ -59,6 +59,26 @@ class CommandRouter(
     private suspend fun singleStep(raw: String): Pair<Boolean, String> {
         val t = raw.lowercase().trim()
 
+        // --- App launching by trailing verb: "youtube kholo", "whatsapp khol do", "translate chalao" ---
+        // Checked before every search rule so a named app opens instead of being searched.
+        val openSuffix = Regex("^(.+?)\\s+(?:kholo|khol do|kholna|khol do na|kholiye|open karo|chalao|chalu karo|shuru karo)$")
+            .find(t)
+        if (openSuffix != null) {
+            val target = openSuffix.groupValues[1].trim()
+            if (!target.contains("search") && !target.startsWith("youtube par") && !target.startsWith("youtube pe")) {
+                val r = DeviceActions.openApp(context, target)
+                if (r.ok) return true to r.message
+                // Not an installed app - try it as a website instead of failing silently.
+                val w = DeviceActions.openWebsite(context, target)
+                return w.ok to if (w.ok) w.message else r.message
+            }
+        }
+
+        // --- Help ---
+        if (t == "help" || t == "madad" || t.contains("what can you do") || t.contains("kya kar sakte")) {
+            return true to "Main ye sab kar sakta hoon: koi bhi app kholo (\"YouTube kholo\"), kisi ko call karo (\"Rahul ko call karo\"), weather, time, alarm, timer, torch, notes, tasks, reminders, Google ya YouTube search, maps navigation - aur kuch bhi poochho, main AI se jawab dunga."
+        }
+
         // --- App launching ---
         val openMatch = Regex("^(?:open|launch|start|kholo|khol do|chalao)\\s+(.+)$").find(t)
         if (openMatch != null) {
@@ -153,19 +173,28 @@ class CommandRouter(
             if (dest.isNotEmpty()) { val r = DeviceActions.navigate(context, dest); return r.ok to r.message }
         }
 
-        // --- Calls and messages: confirmation required ---
-        Regex("(?:call|dial|phone)\\s+(.+)$").find(t)?.let { m ->
-            val name = m.groupValues[1].trim()
+        // --- Calls: by contact name or spoken number; always show-then-confirm ---
+        val callTarget = Regex("^(?:call|dial|phone)\\s+(.+)$").find(t)?.groupValues?.get(1)
+            ?: Regex("^(.+?)\\s+ko\\s+call\\s+(?:karo|kar do|karna hai|karni hai|lagao|marao)$").find(t)?.groupValues?.get(1)
+        if (callTarget != null) {
+            val name = callTarget.trim()
+            val digits = name.filter { it.isDigit() || it == '+' }
+            if (digits.length >= 5) {
+                // Spoken number - no contact lookup needed.
+                requestConfirmation(ConfirmRequest("call", "Call $digits?") {
+                    DeviceActions.placeCall(context, digits)
+                })
+                return true to "$digits par call karna hai - screen par confirm karo ya 'haan' bolo."
+            }
             if (!has(Manifest.permission.READ_CONTACTS)) {
-                return false to "I need contacts permission to find $name. Grant it from the prompt and try again."
+                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
             }
             val contact = DeviceActions.findContact(context, name)
-                ?: return false to "I could not find a contact matching $name."
+                ?: return false to "\"$name\" naam ka contact nahi mila. Naam thoda aur saaf bolo, ya number bata do."
             requestConfirmation(ConfirmRequest("call", "Call ${contact.first} (${contact.second})?") {
-                if (DeviceActions.dialIntent(context, contact.second)) "Opening the dialer for ${contact.first}. Tap call to connect."
-                else "Could not open the dialer."
+                DeviceActions.placeCall(context, contact.second)
             })
-            return true to "Confirm the call on screen."
+            return true to "${contact.first} (${contact.second}) ko call karoon? Screen par confirm karo ya 'haan' bolo."
         }
         Regex("(?:message|sms|text)\\s+(?:to\\s+)?(\\w+)\\s*(?:saying|ki|that)?\\s*(.*)$").find(t)?.let { m ->
             val name = m.groupValues[1].trim()

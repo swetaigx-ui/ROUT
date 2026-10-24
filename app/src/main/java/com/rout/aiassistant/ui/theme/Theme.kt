@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -48,3 +49,10 @@ fun RoutTheme(content: @Composable () -> Unit) {
     // ROUT is a dark-only visual identity.
     MaterialTheme(colorScheme = scheme, typography = type, content = content)
 }
+
+val RoutBlue = Color(0xFF287DFF)
+val RoutPurple = Color(0xFF8C4DFF)
+val RoutGreen = Color(0xFF36FFB3)
+val RoutBrandGradient = Brush.linearGradient(
+    listOf(Color.White, Color(0xFF43EDFF), Color(0xFF5488FF))
+)

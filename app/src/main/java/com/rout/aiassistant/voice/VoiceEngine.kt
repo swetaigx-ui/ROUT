@@ -86,6 +86,7 @@ class VoiceEngine(
     /** Natural backend voice. Set when the device is enrolled; null = on-device TTS only. */
     var backendSpeaker: BackendSpeaker? = null
     var backendUrl: String = ""
+    var voiceName: String = "Achernar"
     var deviceTokenProvider: () -> String = { "" }
 
     fun speak(text: String) {
@@ -94,7 +95,7 @@ class VoiceEngine(
         if (bs != null && backendUrl.isNotBlank() && token.isNotBlank()) {
             setState(AssistantState.SPEAKING)
             scope.launch {
-                val ok = bs.speak(backendUrl, token, text) {
+                val ok = bs.speak(backendUrl, token, voiceName, text) {
                     scope.launch { if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE) }
                 }
                 if (ok) _voiceMode.value = "natural" else speakOnDevice(text)   // fallback is visible via voiceMode

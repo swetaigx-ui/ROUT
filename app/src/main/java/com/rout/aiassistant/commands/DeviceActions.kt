@@ -228,6 +228,27 @@ object DeviceActions {
         return null
     }
 
+    /**
+     * Place a call. With CALL_PHONE granted this is a direct call (ACTION_CALL);
+     * without it we open the dialer pre-filled (honest fallback, spoken to the user).
+     */
+    fun placeCall(context: Context, number: String): String {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.CALL_PHONE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        return if (granted) {
+            val i = Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(number)))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (launch(context, i)) "Call lagai jaa rahi hai $number ko."
+            else "Call nahi lag payi - dialer khol raha hoon."
+        } else {
+            val i = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (launch(context, i)) "Direct call ki permission nahi hai - dialer mein number daal diya, call button dabao."
+            else "Dialer nahi khul paya."
+        }
+    }
+
     fun dialIntent(context: Context, number: String): Boolean =
         launch(context, Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")))
 

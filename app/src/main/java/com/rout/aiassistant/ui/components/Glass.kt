@@ -17,13 +17,21 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * ROUT liquid glass: translucent fill + hairline gradient border over a
- * static depth background. Deliberately no blur effect (GPU cost on budget
- * phones); translucency over the gradient gives the glass read.
+ * ROUT liquid glass: a layered translucent gradient fill with a bright
+ * top-edge catch-light and a hairline gradient border, floating over the
+ * deep radial backdrop. No GPU blur pass - the glass read comes from real
+ * transparency over the scene gradient, so it stays smooth on budget phones.
  */
 val GlassFill = Color(0x0FFFFFFF)
-val GlassFillStrong = Color(0x14FFFFFF)
-val GlassEdge = Brush.verticalGradient(listOf(Color(0x38FFFFFF), Color(0x14FFFFFF)))
+val GlassFillStrong = Color(0x16FFFFFF)
+private val GlassSheen = Brush.linearGradient(
+    listOf(Color(0x1AFFFFFF), Color(0x07FFFFFF), Color(0x0E4DE8FF)),
+    start = Offset.Zero, end = Offset(0f, Float.POSITIVE_INFINITY)
+)
+val GlassEdge = Brush.linearGradient(
+    listOf(Color(0x44FFFFFF), Color(0x12FFFFFF), Color(0x2A4DE8FF)),
+    start = Offset.Zero, end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+)
 
 @Composable
 fun GlassBox(
@@ -33,19 +41,40 @@ fun GlassBox(
     content: @Composable BoxScope.() -> Unit
 ) {
     Box(
-        modifier.clip(RoundedCornerShape(radius)).background(fill).border(1.dp, GlassEdge, RoundedCornerShape(radius)),
+        modifier
+            .clip(RoundedCornerShape(radius))
+            .background(fill)
+            .background(GlassSheen)
+            .drawBehind {
+                // top catch-light: the bright edge that sells the glass
+                drawLine(
+                    Brush.horizontalGradient(listOf(Color(0x3BFFFFFF), Color(0x10FFFFFF), Color(0x2B4DE8FF))),
+                    Offset(size.width * 0.08f, 1f), Offset(size.width * 0.92f, 1f),
+                    strokeWidth = 2f
+                )
+            }
+            .border(1.dp, GlassEdge, RoundedCornerShape(radius)),
         content = content
     )
 }
 
-/** Approved minimal-liquid-glass backdrop: near-black, faint cyan glow up top, graphite falloff. Static. */
+/** Reference backdrop: deep space radial (navy core at 42% height over near-black), with faint cyan/violet auras. */
 @Composable
 fun RoutBackground(content: @Composable BoxScope.() -> Unit) {
     Box(
         Modifier.fillMaxSize().drawBehind {
-            drawRect(Color(0xFF050608))
-            drawCircle(Color(0x0D4DE8FF), radius = size.minDimension * 0.75f, center = Offset(size.width / 2f, size.height * 0.30f))
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF0A0E14)), startY = size.height * 0.55f))
+            drawRect(Color(0xFF02040A))
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0xFF0B2040), Color(0xFF050B19), Color.Transparent),
+                    center = Offset(size.width / 2f, size.height * 0.42f),
+                    radius = size.minDimension * 0.95f
+                ),
+                radius = size.minDimension * 0.95f,
+                center = Offset(size.width / 2f, size.height * 0.42f)
+            )
+            drawCircle(Color(0x0C287DFF), radius = size.minDimension * 0.55f, center = Offset(size.width * 0.88f, size.height * 0.12f))
+            drawCircle(Color(0x098C4DFF), radius = size.minDimension * 0.48f, center = Offset(size.width * 0.08f, size.height * 0.85f))
         },
         content = content
     )

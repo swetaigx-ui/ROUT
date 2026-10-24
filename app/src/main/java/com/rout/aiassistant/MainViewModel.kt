@@ -47,8 +47,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _confirm = MutableStateFlow<ConfirmRequest?>(null)
     val confirm: StateFlow<ConfirmRequest?> = _confirm
 
-    private val _online = MutableStateFlow(true)
-    val online: StateFlow<Boolean> = _online
+    val online: StateFlow<Boolean> = NetworkStatus.online
 
     private val _aiStatus = MutableStateFlow("AI setup required")
     val aiStatus: StateFlow<String> = _aiStatus
@@ -65,6 +64,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         e.backendSpeaker = com.rout.aiassistant.voice.BackendSpeaker(app)
         e.deviceTokenProvider = { enrollment.deviceToken }
         viewModelScope.launch { backendUrl.collect { e.backendUrl = it } }
+        viewModelScope.launch { prefs.voiceName.collect { e.voiceName = it } }
     }
     val assistantState: StateFlow<AssistantState> = engine.state
     val rms: StateFlow<Float> = engine.rms
@@ -101,9 +101,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _aiStatus.value = providerManager().statusLabel()
             }
         }
-        viewModelScope.launch {
-            while (true) { _online.value = NetworkStatus.isOnline(app); delay(5000) }
-        }
+        NetworkStatus.start(app)
         viewModelScope.launch {
             // restore wake session if it was enabled
             if (prefs.wakeEnabled.first()) startWakeSession()
@@ -150,6 +148,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isBlank()) return
         viewModelScope.launch {
             val cid = conversationId.value
+            // Voice confirmation for a pending call/message: "haan" confirms, "nahi" cancels.
+            if (_confirm.value != null) {
+                val t = text.trim().lowercase().trimEnd('.', '!')
+                val yes = setOf("haan", "ha", "han", "haan ji", "han ji", "yes", "ok", "okay", "kar do", "haan kar do", "confirm", "theek hai", "haan bolo")
+                val no = setOf("nahi", "nahin", "na", "no", "cancel", "rehne do", "mat karo", "ruk", "ruko", "nahi karna")
+                when {
+                    t in yes -> {
+                        db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = text))
+                        confirmPending()
+                        return@launch
+                    }
+                    t in no -> {
+                        db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = text))
+                        _confirm.value = null
+                        db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = "Theek hai, cancel kar diya."))
+                        engine.speak("Theek hai, cancel kar diya.")
+                        engine.setState(AssistantState.IDLE)
+                        return@launch
+                    }
+                }
+            }
             db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = text))
             engine.setState(AssistantState.EXECUTING)
             val reply = try { router.handle(text) } catch (e: Exception) {

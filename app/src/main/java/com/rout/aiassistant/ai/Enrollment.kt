@@ -94,8 +94,8 @@ class Enrollment(context: Context) {
         } catch (e: Exception) { null }
     }
 
-    /** Polls until the user approves (or attempts run out). Returns true when enrolled. */
-    suspend fun complete(backendUrl: String, enrollId: String, clientSecret: String, attempts: Int = 40): Boolean {
+    /** Polls until the user approves (or attempts run out). 190 x 3s ~= 9.5 minutes, matching the link's 10-minute TTL. Returns true when enrolled. */
+    suspend fun complete(backendUrl: String, enrollId: String, clientSecret: String, attempts: Int = 190): Boolean {
         repeat(attempts) {
             try {
                 val (code, text) = post(backendUrl.trimEnd('/') + "/v1/enroll/complete",

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -84,6 +85,37 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                         Text("Reduce motion", color = RoutText)
                     }
                     Switch(checked = reducedMotion, onCheckedChange = { scope.launch { vm.prefs.setReducedMotion(it) } }, colors = switchColors())
+                }
+            }
+
+            Section("ROUT voice") {
+                val currentVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
+                Text(
+                    "Natural backend voice for ROUT's spoken replies (needs a connected device). " +
+                    "Device fallback voice is unchanged.",
+                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
+                )
+                Text("Female", color = RoutIce, style = MaterialTheme.typography.labelSmall)
+                Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    listOf("Achernar", "Aoede", "Despina", "Sulafat", "Zephyr").forEach { v ->
+                        FilterChip(
+                            selected = currentVoice == v,
+                            onClick = { scope.launch { vm.prefs.setVoiceName(v) } },
+                            label = { Text(v) },
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
+                    }
+                }
+                Text("Male", color = RoutIce, style = MaterialTheme.typography.labelSmall)
+                Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    listOf("Achird", "Algieba", "Charon", "Umbriel", "Sadaltager").forEach { v ->
+                        FilterChip(
+                            selected = currentVoice == v,
+                            onClick = { scope.launch { vm.prefs.setVoiceName(v) } },
+                            label = { Text(v) },
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
+                    }
                 }
             }
 
@@ -230,7 +262,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
 @Composable
 fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Surface(color = RoutPanel, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+    com.rout.aiassistant.ui.components.GlassBox(radius = 18.dp, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = RoutIce)
             content()

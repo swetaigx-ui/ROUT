@@ -22,6 +22,7 @@ class Prefs(private val context: Context) {
         val ONBOARDED = booleanPreferencesKey("onboarded")
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         val DEV_AI_ENABLED = booleanPreferencesKey("dev_ai_enabled")
+        val VOICE_NAME = stringPreferencesKey("voice_name")
     }
 
     val language: Flow<String> = context.ds.data.map { it[LANGUAGE] ?: "hi-IN" }
@@ -33,6 +34,7 @@ class Prefs(private val context: Context) {
     val onboarded: Flow<Boolean> = context.ds.data.map { it[ONBOARDED] ?: false }
     val reducedMotion: Flow<Boolean> = context.ds.data.map { it[REDUCED_MOTION] ?: false }
     val devAiEnabled: Flow<Boolean> = context.ds.data.map { it[DEV_AI_ENABLED] ?: false }
+    val voiceName: Flow<String> = context.ds.data.map { it[VOICE_NAME] ?: "Achernar" }
 
     suspend fun setLanguage(v: String) = context.ds.edit { it[LANGUAGE] = v }
     suspend fun setSpeechRate(v: Float) = context.ds.edit { it[SPEECH_RATE] = v }
@@ -43,6 +45,7 @@ class Prefs(private val context: Context) {
     suspend fun setOnboarded(v: Boolean) = context.ds.edit { it[ONBOARDED] = v }
     suspend fun setReducedMotion(v: Boolean) = context.ds.edit { it[REDUCED_MOTION] = v }
     suspend fun setDevAiEnabled(v: Boolean) = context.ds.edit { it[DEV_AI_ENABLED] = v }
+    suspend fun setVoiceName(v: String) = context.ds.edit { it[VOICE_NAME] = v }
 
     // Developer/advanced AI key: stored encrypted on-device, entered by the user at runtime.
     // Never shipped in the app, never committed to source control.
