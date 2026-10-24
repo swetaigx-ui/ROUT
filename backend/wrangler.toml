@@ -4,7 +4,7 @@ compatibility_date = "2026-10-01"
 
 [[kv_namespaces]]
 binding = "ROUT_KV"
-id = "REPLACE_WITH_PRODUCTION_KV_ID"
+id = "9526f452b61b4756974e0ab6cc1a93d6"
 preview_id = "rout-preview-kv"
 
 [vars]
