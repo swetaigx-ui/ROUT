@@ -20,15 +20,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.rout.aiassistant.MainViewModel
 import com.rout.aiassistant.data.Message
+import com.rout.aiassistant.ui.components.GlassBox
+import com.rout.aiassistant.ui.components.GlassFill
+import com.rout.aiassistant.ui.components.GlassFillStrong
 import com.rout.aiassistant.ui.components.OrbView
+import com.rout.aiassistant.ui.components.RoutBackground
 import com.rout.aiassistant.ui.theme.*
 import com.rout.aiassistant.voice.AssistantState
 
@@ -59,9 +65,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
 
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1) }
 
-    Box(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(RoutBlack, RoutGraphite, RoutBlack)))
-    ) {
+    RoutBackground {
         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             // Status row
             Row(
@@ -70,23 +74,44 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text("ROUT", style = MaterialTheme.typography.headlineLarge, color = RoutCyan, maxLines = 1)
+                    Text("ROUT", style = MaterialTheme.typography.headlineLarge.copy(fontSize = 26.sp, letterSpacing = 8.sp), color = RoutCyan, maxLines = 1)
                     Text("PERSONAL AI  ·  POWERED BY GYAN", style = MaterialTheme.typography.labelSmall,
                         maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    StatusPill(if (online) "Online" else "Offline", if (online) RoutCyan else RoutError)
-                    Spacer(Modifier.height(4.dp))
-                    StatusPill(aiStatus, if (aiStatus.contains("setup", true)) RoutViolet else RoutCyan)
-                    Spacer(Modifier.height(4.dp))
-                    StatusPill(if (micGranted) "Mic ready" else "Mic off", if (micGranted) RoutCyan else RoutDim)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val pillText = when {
+                        !online -> "Offline"
+                        aiStatus.isNotBlank() -> aiStatus
+                        else -> "Ready"
+                    }
+                    val pillColor = when {
+                        !online -> RoutError
+                        aiStatus.contains("setup", true) || aiStatus.contains("connect", true) -> RoutViolet
+                        else -> RoutCyan
+                    }
+                    GlassBox(radius = 50.dp) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).clickable { nav.navigate("settings") },
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(6.dp).background(pillColor, RoundedCornerShape(50)))
+                            Spacer(Modifier.width(6.dp))
+                            Text(pillText, color = RoutDim, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    GlassBox(radius = 50.dp) {
+                        Icon(Icons.Default.Settings, "Settings", tint = RoutDim,
+                            modifier = Modifier.size(44.dp).clickable { nav.navigate("settings") }.padding(12.dp))
+                    }
                 }
             }
 
             // Orb + state
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(8.dp))
-                OrbView(state = state, rms = rms, reducedMotion = reducedMotion, size = 210.dp)
+                Box(contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(300.dp).drawBehind { drawCircle(androidx.compose.ui.graphics.Color(0x124DE8FF)) })
+                    OrbView(state = state, rms = rms, reducedMotion = reducedMotion, size = 210.dp)
+                }
                 Text(
                     when (state) {
                         AssistantState.IDLE -> if (wakeEnabled) "Hey ROUT session active" else "Idle - tap the mic or type below"
@@ -113,17 +138,10 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                 ) {
                     Text("Bolo ya type karo - kya karoon?", style = MaterialTheme.typography.titleMedium, color = RoutDim)
                     Spacer(Modifier.height(14.dp))
-                    listOf(
-                        "\"YouTube kholo\"",
-                        "\"Torch on karo\"",
-                        "\"Weather batao\"",
-                        "\"Note banao: kal ka plan\"",
-                        "\"Yaad rakho: mera birthday 5 May\"",
-                        "\"Alarm set karo 6 baje\""
-                    ).forEach { hint ->
-                        Surface(color = RoutPanel, shape = RoundedCornerShape(50), modifier = Modifier.padding(vertical = 4.dp)) {
-                            Text(hint, color = RoutIce, style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    listOf("Weather batao", "YouTube kholo", "Alarm set karo 6 baje").forEach { hint ->
+                        GlassBox(radius = 50.dp, modifier = Modifier.padding(vertical = 5.dp)) {
+                            Text("\"$hint\"", color = RoutIce, style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.clickable { vm.onUserText(hint, false) }.padding(horizontal = 18.dp, vertical = 10.dp))
                         }
                     }
                 }
@@ -137,59 +155,39 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                 }
             }
 
-            // Quick actions
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
-            ) {
-                QuickAction("YouTube") { vm.onUserText("YouTube kholo", false) }
-                QuickAction("Weather") { vm.onUserText("weather batao", false) }
-                QuickAction("Notes") { nav.navigate("notes") }
-                QuickAction("Tasks") { nav.navigate("tasks") }
-                QuickAction("Torch") { vm.onUserText("torch on", false) }
-                QuickAction("Memory") { nav.navigate("memory") }
-                QuickAction("History") { nav.navigate("history") }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            // Input row
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = text, onValueChange = { text = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type to ROUT... (Hindi/Hinglish/English)") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = RoutCyan, unfocusedBorderColor = RoutDim,
-                        focusedTextColor = RoutText, unfocusedTextColor = RoutText
+            // Input bar (glass)
+            GlassBox(Modifier.fillMaxWidth().padding(bottom = 8.dp), radius = 28.dp, fill = GlassFillStrong) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 18.dp, end = 8.dp)) {
+                    TextField(
+                        value = text, onValueChange = { text = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Type to ROUT... (Hindi/Hinglish/English)", color = RoutDim) },
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            focusedTextColor = RoutText, unfocusedTextColor = RoutText
+                        )
                     )
-                )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(
-                    onClick = { if (text.isNotBlank()) { vm.onUserText(text, false); text = "" } },
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = RoutCyan)
-                ) { Icon(Icons.Default.Send, "Send", tint = RoutBlack) }
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(
-                    onClick = {
-                        if (!micGranted) showMicRationale = true else vm.onMicTap()
-                    },
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = if (state == AssistantState.LISTENING) RoutViolet else RoutCyan
-                    )
-                ) { Text(if (state == AssistantState.LISTENING) "STOP" else "MIC", color = RoutBlack, style = MaterialTheme.typography.labelSmall) }
-            }
-
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = { nav.navigate("settings") }) { Text("Settings & Privacy", color = RoutDim) }
-                if (state != AssistantState.IDLE) {
-                    TextButton(onClick = { vm.stopAll() }) { Text("STOP", color = RoutError) }
+                    GlassBox(radius = 50.dp) {
+                        Text(if (state == AssistantState.LISTENING) "STOP" else "MIC",
+                            color = if (state == AssistantState.LISTENING) RoutViolet else RoutIce,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clickable { if (!micGranted) showMicRationale = true else vm.onMicTap() }
+                                .padding(horizontal = 14.dp, vertical = 12.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.size(44.dp).background(RoutCyan, RoundedCornerShape(50))
+                        .clickable { if (text.isNotBlank()) { vm.onUserText(text, false); text = "" } },
+                        contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Send, "Send", tint = RoutBlack, modifier = Modifier.size(18.dp))
+                    }
                 }
+            }
+            if (state != AssistantState.IDLE) {
+                TextButton(onClick = { vm.stopAll() }, modifier = Modifier.fillMaxWidth()) { Text("STOP", color = RoutError) }
             }
         }
 
@@ -232,33 +230,19 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
 }
 
 @Composable
-fun StatusPill(text: String, color: androidx.compose.ui.graphics.Color) {
-    Surface(color = color.copy(alpha = 0.15f), shape = RoundedCornerShape(50)) {
-        Text(text, color = color, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
-    }
-}
-
-@Composable
-fun QuickAction(label: String, onClick: () -> Unit) {
-    Surface(
-        color = RoutPanel, shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.clickable(onClick = onClick)
-    ) {
-        Text(label, color = RoutIce, style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
-    }
-}
-
-@Composable
 fun MessageBubble(m: Message, onReplay: () -> Unit) {
     val isUser = m.role == "user"
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
-        Surface(
-            color = if (isUser) RoutCyan.copy(alpha = 0.15f) else RoutPanel,
-            shape = RoundedCornerShape(14.dp),
+        GlassBox(
+            radius = if (isUser) 20.dp else 20.dp,
+            fill = if (isUser) androidx.compose.ui.graphics.Color(0x1A4DE8FF) else GlassFill,
             modifier = Modifier.widthIn(max = 320.dp)
         ) {
-            Column(Modifier.padding(10.dp)) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                if (!isUser) {
+                    Text("ROUT", color = RoutCyan, style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 3.sp))
+                    Spacer(Modifier.height(4.dp))
+                }
                 Text(m.text, color = RoutText, style = MaterialTheme.typography.bodyMedium)
                 if (!isUser) {
                     Text("replay", color = RoutDim, style = MaterialTheme.typography.labelSmall,

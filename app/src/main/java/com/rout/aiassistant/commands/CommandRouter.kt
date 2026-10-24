@@ -259,8 +259,35 @@ class CommandRouter(
         if (t.contains("settings")) { val r = DeviceActions.openSettings(context); return r.ok to r.message }
         if (t.contains("sound settings")) { val r = DeviceActions.openSoundSettings(context); return r.ok to r.message }
 
+        // --- Screen control (user-enabled accessibility service; approved scope) ---
+        ScreenControl.parse(t)?.let { intent ->
+            if (intent is ScreenControl.Intent.Tap && ScreenControl.isSendLike(intent.target)) {
+                requestConfirmation(ConfirmRequest("screen-tap",
+                    "'${intent.target}' tap karne se kuch bheja ya post ho sakta hai. Karoon?") {
+                    ScreenControl.execute(intent, ::askAiAboutScreen)
+                })
+                return true to "Confirm on screen - tap karne se pehle aapki permission chahiye."
+            }
+            return true to ScreenControl.execute(intent, ::askAiAboutScreen)
+        }
+
         // --- AI fallback ---
         return aiFallback(raw)
+    }
+
+    private suspend fun askAiAboutScreen(question: String, redactedScreenText: String): String {
+        val pm = providerManager()
+        return when (pm.mode()) {
+            AiMode.SETUP_REQUIRED -> "ROUT AI is not configured yet - screen ka jawab dene ke liye backend connect karo."
+            AiMode.BACKEND_NEEDS_ENROLLMENT -> "Is phone ko pehle backend se connect karo (Settings > Connect this device)."
+            else -> when (val r = pm.provider()!!.chat(emptyList(),
+                "The user is asking about their phone screen. Answer their question using the screen text below. Screen text:\n---\n" +
+                    redactedScreenText + "\n---\nQuestion: " + question)) {
+                is AiResult.Reply -> r.text
+                is AiResult.SetupRequired -> r.message
+                is AiResult.Failure -> "AI abhi jawab nahi de paya: ${r.reason}"
+            }
+        }
     }
 
     private suspend fun weather(): Pair<Boolean, String> {

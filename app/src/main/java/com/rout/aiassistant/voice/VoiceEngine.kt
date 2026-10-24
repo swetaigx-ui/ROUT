@@ -36,6 +36,10 @@ class VoiceEngine(
     val partial: StateFlow<String> = _partial
 
     /** True when the continuous "Hey ROUT" foreground session is running. */
+    /** "natural" (backend voice), "device" (on-device TTS), "unavailable". */
+    private val _voiceMode = MutableStateFlow("device")
+    val voiceMode: StateFlow<String> = _voiceMode
+
     private val _wakeSession = MutableStateFlow(false)
     val wakeSession: StateFlow<Boolean> = _wakeSession
 
@@ -93,7 +97,7 @@ class VoiceEngine(
                 val ok = bs.speak(backendUrl, token, text) {
                     scope.launch { if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE) }
                 }
-                if (!ok) speakOnDevice(text)   // backend voice failed: fall back, never silent
+                if (ok) _voiceMode.value = "natural" else speakOnDevice(text)   // fallback is visible via voiceMode
             }
         } else {
             speakOnDevice(text)
@@ -101,8 +105,9 @@ class VoiceEngine(
     }
 
     private fun speakOnDevice(text: String) {
+        _voiceMode.value = "device"
         initTts()
-        if (!ttsReady) { setState(AssistantState.IDLE); return }
+        if (!ttsReady) { _voiceMode.value = "unavailable"; setState(AssistantState.IDLE); return }
         setState(AssistantState.SPEAKING)
         tts?.setSpeechRate(speechRate)
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rout-" + UUID.randomUUID().toString())

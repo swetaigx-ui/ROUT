@@ -177,6 +177,18 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 }
             }
 
+            Section("Screen control") {
+                Text("Lets ROUT tap a button you name, scroll, and do Back/Home/Recents when you ask. " +
+                    "Screen text is read only on this device; password, OTP and payment screens are refused; " +
+                    "and ROUT asks before anything that could send or post. " +
+                    "To use it, enable ROUT under system Accessibility settings. Off by default." +
+                    if (com.rout.aiassistant.service.RoutAccessibilityService.isEnabled) " (Currently: enabled)" else " (Currently: off)",
+                    color = RoutDim, style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }) { Text("Open accessibility settings", color = RoutCyan) }
+            }
+
             Section("Media control") {
                 Text(
                     "Play/pause and track skip use Android media sessions. This needs notification access, " +
@@ -185,6 +197,14 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     color = RoutDim, style = MaterialTheme.typography.bodyMedium
                 )
                 OutlinedButton(onClick = { MediaControl.openAccessSettings(context) }) { Text("Open notification access settings", color = RoutCyan) }
+            }
+
+            Section("Screens") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history").forEach { (label, route) ->
+                        OutlinedButton(onClick = { nav.navigate(route) }) { Text(label, color = RoutCyan) }
+                    }
+                }
             }
 
             Section("Your data") {

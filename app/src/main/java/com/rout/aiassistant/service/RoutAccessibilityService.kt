@@ -29,12 +29,7 @@ class RoutAccessibilityService : AccessibilityService() {
             private set
         val isEnabled: Boolean get() = instance != null
 
-        /** Heuristic sensitive-context markers. Fail closed: any match blocks read+act. */
-        private val SENSITIVE_MARKERS = listOf(
-            "otp", "one-time", "one time", "verification code", "verify your",
-            "card number", "cvv", "expiry", "enter pin", "upi pin", "mpin",
-            "payment", "checkout", "pay now", "cvv/cvc", "password"
-        )
+        /** Heuristic only - see ScreenSafety. Fail closed on any match. */
     }
 
     override fun onServiceConnected() { instance = this }
@@ -48,7 +43,7 @@ class RoutAccessibilityService : AccessibilityService() {
         try {
             if (hasPasswordField(root)) return true
             val text = collectText(root, StringBuilder(), 0).toString().lowercase()
-            return SENSITIVE_MARKERS.any { text.contains(it) }
+            return ScreenSafety.isSensitive(text)
         } finally {
             root.recycle()
         }

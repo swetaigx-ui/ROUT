@@ -69,6 +69,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val assistantState: StateFlow<AssistantState> = engine.state
     val rms: StateFlow<Float> = engine.rms
     val partial: StateFlow<String> = engine.partial
+    val voiceMode: StateFlow<String> = engine.voiceMode
 
     val recognitionAvailable get() = engine.recognitionAvailable
     val onDeviceRecognitionAvailable get() = engine.onDeviceRecognitionAvailable
