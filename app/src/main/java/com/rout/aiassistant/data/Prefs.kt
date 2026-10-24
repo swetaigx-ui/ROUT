@@ -17,6 +17,7 @@ class Prefs(private val context: Context) {
         val WAKE_ENABLED = booleanPreferencesKey("wake_enabled")
         val ORB_ENABLED = booleanPreferencesKey("orb_enabled")
         val BACKEND_URL = stringPreferencesKey("backend_url")
+        const val DEFAULT_BACKEND_URL = "https://rout-backend.rout-1ed.workers.dev"
         val WEATHER_CITY = stringPreferencesKey("weather_city")
         val ONBOARDED = booleanPreferencesKey("onboarded")
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
@@ -27,7 +28,7 @@ class Prefs(private val context: Context) {
     val speechRate: Flow<Float> = context.ds.data.map { it[SPEECH_RATE] ?: 1.0f }
     val wakeEnabled: Flow<Boolean> = context.ds.data.map { it[WAKE_ENABLED] ?: false }
     val orbEnabled: Flow<Boolean> = context.ds.data.map { it[ORB_ENABLED] ?: false }
-    val backendUrl: Flow<String> = context.ds.data.map { it[BACKEND_URL] ?: "" }
+    val backendUrl: Flow<String> = context.ds.data.map { it[BACKEND_URL] ?: DEFAULT_BACKEND_URL }
     val weatherCity: Flow<String> = context.ds.data.map { it[WEATHER_CITY] ?: "" }
     val onboarded: Flow<Boolean> = context.ds.data.map { it[ONBOARDED] ?: false }
     val reducedMotion: Flow<Boolean> = context.ds.data.map { it[REDUCED_MOTION] ?: false }

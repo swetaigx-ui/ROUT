@@ -91,7 +91,7 @@ class GeminiDirectProvider(private val apiKey: String) : AiProvider {
                     "You are ROUT, a concise personal assistant. The user speaks Hindi, Hinglish and English. " +
                     "Reply in the same language the user used. Keep answers short and spoken-friendly."))))
             val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-                "gemini-2.5-flash:generateContent"
+                "gemini-3.6-flash:generateContent"
             val (code, text) = post(url, body, mapOf("x-goog-api-key" to apiKey))
             if (code in 200..299) {
                 val root = JSONObject(text)
