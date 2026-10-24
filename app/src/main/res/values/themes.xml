@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ROUT" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/rout_black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/rout_black</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <style name="Theme.ROUT.Splash" parent="Theme.SplashScreen" >
+        <item name="windowSplashScreenBackground">@color/rout_black</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.ROUT</item>
+    </style>
+</resources>

@@ -1,0 +1,23 @@
+name = "rout-backend"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[[kv_namespaces]]
+binding = "ROUT_KV"
+id = "REPLACE_WITH_PRODUCTION_KV_ID"
+preview_id = "rout-preview-kv"
+
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"
+RATE_LIMIT_PER_MINUTE = "30"
+# Secrets (GEMINI_API_KEY) are set via `wrangler secret put` - never in this file.
+
+# OWNER_CODE is a Worker secret (wrangler secret put OWNER_CODE); value lives in the vault, never in this file.
+
+[[durable_objects.bindings]]
+name = "ENROLLMENT"
+class_name = "EnrollmentStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["EnrollmentStore"]

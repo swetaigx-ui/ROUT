@@ -1,0 +1,17 @@
+{
+  "name": "rout-backend",
+  "version": "0.1.0",
+  "description": "ROUT AI backend proxy - keeps provider keys on the server",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test-runner.mjs"
+  },
+  "dependencies": {
+    "wrangler": "^4.152.0"
+  }
+}
