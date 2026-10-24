@@ -138,6 +138,57 @@ async function handleEnrollComplete(request, env) {
   return json({ device_token: token }); // returned exactly once, at enrollment
 }
 
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function pcmToWav(pcm, sampleRate = 24000) {
+  const header = new ArrayBuffer(44);
+  const v = new DataView(header);
+  const wstr = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  wstr(0, 'RIFF'); v.setUint32(4, 36 + pcm.length, true); wstr(8, 'WAVE');
+  wstr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  wstr(36, 'data'); v.setUint32(40, pcm.length, true);
+  const out = new Uint8Array(44 + pcm.length);
+  out.set(new Uint8Array(header), 0); out.set(pcm, 44);
+  return out;
+}
+
+async function handleSpeak(request, env) {
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body.text !== 'string' || !body.text.trim()) {
+    return json({ error: 'invalid_request' }, 400);
+  }
+  const text = body.text.slice(0, 2000);
+  const voice = /^[A-Za-z]{1,24}$/.test(String(body.voice || '')) ? String(body.voice) : 'Kore';
+  const model = env.TTS_MODEL || 'gemini-3.8-flash-tts';
+  const upstream = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }
+        }
+      }),
+      signal: AbortSignal.timeout(25000)
+    });
+  const data = await upstream.json().catch(() => ({}));
+  if (!upstream.ok) return json({ error: 'upstream_error' }, 502);
+  const parts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
+  const audio = parts.map(p => (p.inlineData && p.inlineData.data) || '').find(d => d);
+  if (!audio) return json({ error: 'no_audio' }, 502);
+  const wav = pcmToWav(b64ToBytes(audio));
+  return new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } });
+}
+
 async function handleRevoke(request, env, token) {
   // Device self-revoke (Bearer) OR owner revoke via X-Owner-Code header.
   const ownerHeader = request.headers.get('x-owner-code') || '';
@@ -275,6 +326,16 @@ export default {
           return json({ error: 'rate_limited' }, 429);
         }
         return await handleChat(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/speak') {
+        if (!env.GEMINI_API_KEY) return json({ error: 'ai_not_configured' }, 503);
+        const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+        if (!(await deviceValid(env, token))) return json({ error: 'unauthorized' }, 401);
+        const limit = parseInt(env.RATE_LIMIT_PER_MINUTE || '30', 10);
+        if (await rateLimited(env.ROUT_KV, 'speak:' + await sha256(token), limit)) {
+          return json({ error: 'rate_limited' }, 429);
+        }
+        return await handleSpeak(request, env);
       }
       return json({ error: 'not_found' }, 404);
     } catch (e) {

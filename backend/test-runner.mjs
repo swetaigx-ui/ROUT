@@ -46,7 +46,9 @@ const post = (u, body, h = {}) => new Request(u, { method: 'POST', headers: { ..
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
   if (String(url).includes('generativelanguage.googleapis.com')) {
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Namaste! Main ROUT hoon.' }] } }] }), { status: 200, headers: J });
+    const wantsAudio = String((init && init.body) || '').includes('AUDIO');
+    const part = wantsAudio ? { inlineData: { data: Buffer.from('fake-pcm-data-1234').toString('base64'), mimeType: 'audio/L16;rate=24000' } } : { text: 'Namaste! Main ROUT hoon.' };
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [part] } }] }), { status: 200, headers: J });
   }
   return realFetch(url, init);
 };
@@ -275,3 +277,20 @@ console.log('ROUND-2 TESTS PASSED');
   console.log('ok stale-ticket-ttl');
 }
 console.log('ROUND-3 TESTS PASSED');
+
+// /v1/speak: auth required, WAV out
+{
+  const env = mkEnv();
+  const tok = (await enrollDevice(env)).body.device_token;
+  const noTok = await worker.fetch(post('https://t/v1/speak', { text: 'hi' }), env);
+  assert.equal(noTok.status, 401, 'speak requires device token');
+  const r = await worker.fetch(post('https://t/v1/speak', { text: 'Namaste' }, { authorization: 'Bearer ' + tok }), env);
+  assert.equal(r.status, 200, 'speak 200');
+  assert.equal(r.headers.get('content-type'), 'audio/wav');
+  const buf = new Uint8Array(await r.arrayBuffer());
+  assert.equal(String.fromCharCode(...buf.slice(0, 4)), 'RIFF', 'wav header');
+  assert.equal(buf.length, 44 + 'fake-pcm-data-1234'.length, 'wav wraps pcm');
+  const bad = await worker.fetch(post('https://t/v1/speak', {}, { authorization: 'Bearer ' + tok }), env);
+  assert.equal(bad.status, 400, 'speak invalid body');
+  console.log('ok speak');
+}

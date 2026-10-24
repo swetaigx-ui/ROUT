@@ -79,7 +79,28 @@ class VoiceEngine(
 
     fun setState(s: AssistantState) { _state.value = s }
 
+    /** Natural backend voice. Set when the device is enrolled; null = on-device TTS only. */
+    var backendSpeaker: BackendSpeaker? = null
+    var backendUrl: String = ""
+    var deviceTokenProvider: () -> String = { "" }
+
     fun speak(text: String) {
+        val bs = backendSpeaker
+        val token = deviceTokenProvider()
+        if (bs != null && backendUrl.isNotBlank() && token.isNotBlank()) {
+            setState(AssistantState.SPEAKING)
+            scope.launch {
+                val ok = bs.speak(backendUrl, token, text) {
+                    scope.launch { if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE) }
+                }
+                if (!ok) speakOnDevice(text)   // backend voice failed: fall back, never silent
+            }
+        } else {
+            speakOnDevice(text)
+        }
+    }
+
+    private fun speakOnDevice(text: String) {
         initTts()
         if (!ttsReady) { setState(AssistantState.IDLE); return }
         setState(AssistantState.SPEAKING)
@@ -88,6 +109,7 @@ class VoiceEngine(
     }
 
     fun stopSpeaking() {
+        backendSpeaker?.stop()
         tts?.stop()
         if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)
     }
@@ -123,6 +145,7 @@ class VoiceEngine(
         _wakeSession.value = false
         try { recognizer?.destroy() } catch (_: Exception) {}
         recognizer = null
+        backendSpeaker?.stop()
         tts?.stop(); tts?.shutdown(); tts = null
     }
 

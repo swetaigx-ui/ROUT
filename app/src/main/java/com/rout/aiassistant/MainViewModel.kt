@@ -61,7 +61,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _enrollState = MutableStateFlow("idle") // idle | waiting | enrolled | failed
     val enrollState: StateFlow<String> = _enrollState
 
-    val engine = VoiceEngine(app, onFinalText = { text -> onUserText(text, fromVoice = true) })
+    val engine = VoiceEngine(app, onFinalText = { text -> onUserText(text, fromVoice = true) }).also { e ->
+        e.backendSpeaker = com.rout.aiassistant.voice.BackendSpeaker(app)
+        e.deviceTokenProvider = { enrollment.deviceToken }
+        viewModelScope.launch { backendUrl.collect { e.backendUrl = it } }
+    }
     val assistantState: StateFlow<AssistantState> = engine.state
     val rms: StateFlow<Float> = engine.rms
     val partial: StateFlow<String> = engine.partial
