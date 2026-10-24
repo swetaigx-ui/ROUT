@@ -177,7 +177,7 @@ async function handleChat(request, env, token) {
   }
   contents.push({ role: 'user', parts: [{ text: input }] });
 
-  const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const model = env.GEMINI_MODEL || 'gemini-3.8-flash';
   const upstream = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
@@ -248,7 +248,7 @@ export default {
       if (request.method === 'GET' && url.pathname === '/health') {
         return json({
           status: 'ok', service: 'rout-backend-worker',
-          model: env.GEMINI_MODEL || 'gemini-2.5-flash',
+          model: env.GEMINI_MODEL || 'gemini-3.8-flash',
           keyConfigured: Boolean(env.GEMINI_API_KEY),
           time: new Date().toISOString()
         });
