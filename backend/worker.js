@@ -68,6 +68,85 @@ function timingSafeEqual(a, b) {
   return diff === 0;
 }
 
+// ---- Owner Google sign-in (free; replaces typed owner code as primary approval) ----
+async function hmacHex(secret, msg) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(sig)).map(x => x.toString(16).padStart(2, '0')).join('');
+}
+function oauthConfigured(env) {
+  return !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.STATE_SECRET && env.OWNER_EMAIL);
+}
+function simplePage(body) {
+  return new Response(
+    `<!doctype html><meta name=viewport content="width=device-width"><title>ROUT</title>` +
+    `<body style="background:#050608;color:#e8f4f8;font-family:sans-serif;display:grid;place-items:center;min-height:100vh;margin:0">` +
+    `<div style="max-width:420px;padding:24px;text-align:center"><h2 style="color:#4DE8FF">ROUT</h2><p>${body}</p></div>`,
+    { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' } });
+}
+async function ticketPending(env, id) {
+  const store = enrollStore(env);
+  const rec = (await (await store.fetch(new Request('https://do/get?ticket=' + encodeURIComponent(id)))).json()).rec;
+  if (rec === null) return false;
+  if (rec.createdAt && Date.now() - rec.createdAt > 600000) return false;
+  return rec.status !== 'approved';
+}
+async function handleOauthStart(request, url, env) {
+  if (!oauthConfigured(env)) return simplePage('Google sign-in is not configured.');
+  const id = url.searchParams.get('id') || '';
+  if (!/^[0-9a-f]{48}$/.test(id) || !(await ticketPending(env, id))) return simplePage('This approval link is expired or already used.');
+  if (await rateLimited(env.ROUT_KV, 'oauth:' + (request.headers.get('cf-connecting-ip') || 'anon'), 20)) return simplePage('Too many attempts. Wait a minute.');
+  const nonce = randToken(16);
+  const state = `${id}.${nonce}.${await hmacHex(env.STATE_SECRET, id + '.' + nonce)}`;
+  const g = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  g.searchParams.set('client_id', env.GOOGLE_CLIENT_ID);
+  g.searchParams.set('redirect_uri', url.origin + '/oauth/callback');
+  g.searchParams.set('response_type', 'code');
+  g.searchParams.set('scope', 'openid email');
+  g.searchParams.set('state', state);
+  g.searchParams.set('login_hint', env.OWNER_EMAIL);
+  g.searchParams.set('prompt', 'select_account');
+  return new Response(null, { status: 302, headers: {
+    Location: g.toString(),
+    'Set-Cookie': `rout_oauth=${nonce}; HttpOnly; Secure; SameSite=Lax; Path=/oauth; Max-Age=600`,
+    'Cache-Control': 'no-store' } });
+}
+async function handleOauthCallback(request, url, env) {
+  if (!oauthConfigured(env)) return simplePage('Google sign-in is not configured.');
+  const [id, nonce, mac] = (url.searchParams.get('state') || '').split('.');
+  const code = url.searchParams.get('code') || '';
+  const cookie = (request.headers.get('cookie') || '').split(';').map(x => x.trim()).find(x => x.startsWith('rout_oauth='));
+  const cookieNonce = cookie ? cookie.slice('rout_oauth='.length) : '';
+  if (!id || !nonce || !mac || !code) return simplePage('Sign-in was cancelled or invalid.');
+  if (!timingSafeEqual(mac, await hmacHex(env.STATE_SECRET, id + '.' + nonce)) || !timingSafeEqual(cookieNonce, nonce)) {
+    return simplePage('Sign-in could not be verified. Start again from the app.');
+  }
+  if (!(await ticketPending(env, id))) return simplePage('This approval link is expired or already used.');
+  const tok = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: url.origin + '/oauth/callback', grant_type: 'authorization_code' }),
+    signal: AbortSignal.timeout(15000) });
+  const td = await tok.json().catch(() => ({}));
+  if (!tok.ok || !td.id_token) return simplePage('Google sign-in failed. Try again.');
+  // id_token arrives directly from Google's token endpoint over TLS, so its claims are trusted (OIDC core 3.1.3.7).
+  let claims;
+  try {
+    const p = td.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    claims = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(p), c => c.charCodeAt(0))));
+  } catch (e) { return simplePage('Google sign-in failed. Try again.'); }
+  if (claims.aud !== env.GOOGLE_CLIENT_ID || (claims.iss !== 'https://accounts.google.com' && claims.iss !== 'accounts.google.com')) {
+    return simplePage('Google sign-in failed. Try again.');
+  }
+  if (claims.email_verified !== true || String(claims.email || '').toLowerCase() !== String(env.OWNER_EMAIL).toLowerCase()) {
+    return simplePage('This Google account is not the ROUT owner. Not approved.');
+  }
+  await enrollStore(env).fetch(new Request('https://do/approve', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ ticket: id }) }));
+  return new Response(
+    '<!doctype html><meta name=viewport content="width=device-width"><body style="background:#050608;color:#e8f4f8;font-family:sans-serif;display:grid;place-items:center;min-height:100vh;margin:0"><div style="text-align:center;padding:24px"><h2 style="color:#4DE8FF">ROUT</h2><p>Device approved. You can return to the ROUT app.</p></div>',
+    { status: 200, headers: { 'Content-Type': 'text/html', 'Set-Cookie': 'rout_oauth=; Max-Age=0; Path=/oauth; Secure; HttpOnly', 'Cache-Control': 'no-store' } });
+}
+
 async function handleApprove(request, url, env) {
   const id = url.searchParams.get('id') || '';
   const store = enrollStore(env);
@@ -106,7 +185,8 @@ async function handleApprove(request, url, env) {
     return page('ROUT', 'Device approved. You can return to the ROUT app.', '');
   }
   return page('ROUT',
-    'Approve this phone as a ROUT device? This link works once, for 10 minutes. Enter the owner code (stored in your vault) to approve.',
+    'Approve this phone as a ROUT device? This link works once, for 10 minutes.',
+    (oauthConfigured(env) ? `<a href="/oauth/start?id=${id}" style="display:inline-block;background:#4DE8FF;color:#050608;padding:14px 28px;border-radius:12px;font-size:16px;text-decoration:none;margin-bottom:18px">Sign in with Google (owner)</a><p style="color:#8FA5B3;font-size:13px">Or use the owner code:</p>` : '<p style="color:#8FA5B3;font-size:13px">Enter the owner code to approve.</p>') +
     `<form method=post><input type=hidden name=id value="${id}">` +
     `<input type=password name=owner_code autocomplete=off placeholder="Owner code" required style="padding:12px;width:70%;margin-bottom:12px;border-radius:8px;border:1px solid #4DE8FF;background:#0a1014;color:#e8f4f8"><br>` +
     `<button type=submit style="background:#4DE8FF;border:0;padding:14px 28px;border-radius:12px;font-size:16px">Approve this device</button></form>`);
@@ -307,6 +387,8 @@ export default {
       if (request.method === 'POST' && url.pathname === '/v1/enroll/start') {
         return await handleEnrollStart(request, env);
       }
+      if (request.method === 'GET' && url.pathname === '/oauth/start') return await handleOauthStart(request, url, env);
+      if (request.method === 'GET' && url.pathname === '/oauth/callback') return await handleOauthCallback(request, url, env);
       if ((request.method === 'GET' || request.method === 'POST') && url.pathname === '/approve') {
         return await handleApprove(request, url, env);
       }

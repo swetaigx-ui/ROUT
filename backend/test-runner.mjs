@@ -50,6 +50,12 @@ globalThis.fetch = async (url, init) => {
     const part = wantsAudio ? { inlineData: { data: Buffer.from('fake-pcm-data-1234').toString('base64'), mimeType: 'audio/L16;rate=24000' } } : { text: 'Namaste! Main ROUT hoon.' };
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [part] } }] }), { status: 200, headers: J });
   }
+  if (String(url).includes('oauth2.googleapis.com/token')) {
+    const email = globalThis.__oauthEmail || 'owner@example.com';
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const idt = b64({alg:'none'}) + '.' + b64({ iss: 'https://accounts.google.com', aud: 'cid', email, email_verified: globalThis.__oauthVerified !== false }) + '.x';
+    return new Response(JSON.stringify({ id_token: idt }), { status: 200, headers: J });
+  }
   return realFetch(url, init);
 };
 
@@ -293,4 +299,47 @@ console.log('ROUND-3 TESTS PASSED');
   const bad = await worker.fetch(post('https://t/v1/speak', {}, { authorization: 'Bearer ' + tok }), env);
   assert.equal(bad.status, 400, 'speak invalid body');
   console.log('ok speak');
+}
+
+// Owner Google OAuth approval
+{
+  const env = mkEnv({ GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', STATE_SECRET: 'state-secret', OWNER_EMAIL: 'owner@example.com' });
+  const cs = 'oauth-secret-' + Math.random();
+  const r1 = await worker.fetch(post('https://t/v1/enroll/start', { client_hash: await sha256hex(cs) }), env);
+  const { enroll_id } = await r1.json();
+  const pageHtml = await (await worker.fetch(new Request('https://t/approve?id=' + enroll_id), env)).text();
+  assert.ok(pageHtml.includes('/oauth/start?id=' + enroll_id), 'google button shown');
+  const st = await worker.fetch(new Request('https://t/oauth/start?id=' + enroll_id), env);
+  assert.equal(st.status, 302);
+  const loc = new URL(st.headers.get('location'));
+  assert.equal(loc.host, 'accounts.google.com');
+  assert.equal(loc.searchParams.get('redirect_uri'), 'https://t/oauth/callback');
+  const state = loc.searchParams.get('state');
+  const cookie = st.headers.get('set-cookie').split(';')[0];
+  const cb = (extra = {}, stt = state, ck = cookie) => worker.fetch(new Request('https://t/oauth/callback?code=abc&state=' + encodeURIComponent(stt), { headers: { cookie: ck, ...extra } }), env);
+  // no cookie -> rejected, still pending
+  assert.ok((await (await cb({}, state, '')).text()).includes('could not be verified'));
+  // forged state -> rejected
+  assert.ok((await (await cb({}, state.slice(0, -2) + 'zz')).text()).includes('could not be verified'));
+  // wrong google account -> rejected
+  globalThis.__oauthEmail = 'attacker@example.com';
+  assert.ok((await (await cb()).text()).includes('not the ROUT owner'));
+  const pend = await worker.fetch(post('https://t/v1/enroll/complete', { enroll_id, client_secret: cs }), env);
+  assert.equal(pend.status, 202, 'still pending after rejections');
+  // unverified email -> rejected
+  globalThis.__oauthEmail = 'owner@example.com'; globalThis.__oauthVerified = false;
+  assert.ok((await (await cb()).text()).includes('not the ROUT owner'));
+  // owner -> approved
+  globalThis.__oauthVerified = true;
+  assert.ok((await (await cb()).text()).includes('Device approved'));
+  const done = await worker.fetch(post('https://t/v1/enroll/complete', { enroll_id, client_secret: cs }), env);
+  assert.equal(done.status, 200);
+  assert.ok((await done.json()).device_token);
+  // not configured -> no button, oauth start refuses, owner code still works
+  const env2 = mkEnv();
+  const r2 = await worker.fetch(post('https://t/v1/enroll/start', { client_hash: await sha256hex('x') }), env2);
+  const id2 = (await r2.json()).enroll_id;
+  assert.ok(!(await (await worker.fetch(new Request('https://t/approve?id=' + id2), env2)).text()).includes('/oauth/start'));
+  assert.ok((await (await worker.fetch(new Request('https://t/oauth/start?id=' + id2), env2)).text()).includes('not configured'));
+  console.log('ok owner-oauth');
 }
