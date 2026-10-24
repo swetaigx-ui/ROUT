@@ -10,6 +10,7 @@ preview_id = "rout-preview-kv"
 [vars]
 GEMINI_MODEL = "gemini-3.6-flash"
 TTS_MODEL = "gemini-3.8-flash-tts"
+TTS_VOICE = "Achernar"
 RATE_LIMIT_PER_MINUTE = "30"
 # Secrets (GEMINI_API_KEY) are set via `wrangler secret put` - never in this file.
 

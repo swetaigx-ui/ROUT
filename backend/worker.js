@@ -164,7 +164,7 @@ async function handleSpeak(request, env) {
     return json({ error: 'invalid_request' }, 400);
   }
   const text = body.text.slice(0, 2000);
-  const voice = /^[A-Za-z]{1,24}$/.test(String(body.voice || '')) ? String(body.voice) : 'Kore';
+  const voice = /^[A-Za-z]{1,24}$/.test(String(body.voice || '')) ? String(body.voice) : (env.TTS_VOICE || 'Achernar');
   const model = env.TTS_MODEL || 'gemini-3.8-flash-tts';
   const upstream = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,

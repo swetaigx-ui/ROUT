@@ -3,4 +3,6 @@
     <string name="app_name">ROUT</string>
     <string name="channel_listening">Listening session</string>
     <string name="channel_reminders">Reminders</string>
+    <string name="accessibility_description">Lets ROUT perform the phone actions you ask for: tap a button you name, scroll, Back, Home and Recents. ROUT reads screen text on-device only to find what you named. It never reads or acts on password, OTP or payment screens. Off by default; enable only if you want screen control.</string>
+    <string name="accessibility_summary">Command-only screen control: tap, scroll, Back, Home, Recents. No background capture.</string>
 </resources>
