@@ -7,6 +7,7 @@ server (environment variable). The Android app never contains a key.
 
 - `GET /health` - service status, model name, whether the key is configured.
 - `POST /v1/chat` - `{ "input": "...", "messages": [{role, text}, ...] }` -> `{ "reply": "..." }`
+- `POST /v1/speak` - `{ "text": "...", "voice"?: "Kore" }` -> `audio/wav` (Gemini TTS, natural voice; same device auth + rate limit as chat)
 
 Built-in: input validation, request size limit, per-IP rate limit, upstream timeout,
 CORS allowlist, structured JSON errors.
