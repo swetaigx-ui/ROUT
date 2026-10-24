@@ -70,6 +70,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val rms: StateFlow<Float> = engine.rms
     val partial: StateFlow<String> = engine.partial
     val voiceMode: StateFlow<String> = engine.voiceMode
+    val live = com.rout.aiassistant.voice.LiveSession()
+    val liveState: StateFlow<String> = live.state
+    val liveTranscript: StateFlow<String> = live.transcript
+    val liveError: StateFlow<String?> = live.error
+    fun toggleLive() {
+        if (live.state.value == "live" || live.state.value == "connecting") { live.stop(); return }
+        engine.stopSpeaking(); engine.stopListening()
+        live.start(backendUrl.value, enrollment.deviceToken ?: "")
+    }
 
     val recognitionAvailable get() = engine.recognitionAvailable
     val onDeviceRecognitionAvailable get() = engine.onDeviceRecognitionAvailable
@@ -264,5 +273,5 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBanner(text: String?) { _banner.value = text }
 
-    override fun onCleared() { engine.destroy() }
+    override fun onCleared() { live.stop(); engine.destroy() }
 }

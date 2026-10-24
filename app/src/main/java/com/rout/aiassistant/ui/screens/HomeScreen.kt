@@ -49,6 +49,10 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
     val confirm by vm.confirm.collectAsState()
     val reducedMotion by vm.reducedMotion.collectAsState()
     val wakeEnabled by vm.wakeEnabled.collectAsState()
+    val voiceMode by vm.voiceMode.collectAsState()
+    val liveState by vm.liveState.collectAsState()
+    val liveTranscript by vm.liveTranscript.collectAsState()
+    val liveError by vm.liveError.collectAsState()
     val context = LocalContext.current
 
     var text by remember { mutableStateOf("") }
@@ -155,6 +159,16 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                 }
             }
 
+            val voiceLabel = when {
+                liveState == "live" -> "Live voice on" + if (liveTranscript.isNotBlank()) ": $liveTranscript" else ""
+                liveState == "connecting" -> "Connecting live voice..."
+                liveState == "failed" -> (liveError ?: "Live unavailable") + " Using normal voice."
+                voiceMode == "natural" -> "Voice: natural (backend)"
+                voiceMode == "unavailable" -> "Voice: unavailable on this device. Text replies only."
+                else -> "Voice: device fallback (natural voice needs enrolment)"
+            }
+            Text(voiceLabel, color = RoutDim, style = MaterialTheme.typography.labelSmall,
+                maxLines = 2, modifier = Modifier.padding(bottom = 4.dp, start = 6.dp))
             // Input bar (glass)
             GlassBox(Modifier.fillMaxWidth().padding(bottom = 8.dp), radius = 28.dp, fill = GlassFillStrong) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 18.dp, end = 8.dp)) {
@@ -171,6 +185,14 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                             focusedTextColor = RoutText, unfocusedTextColor = RoutText
                         )
                     )
+                    GlassBox(radius = 50.dp) {
+                        Text(if (liveState == "live" || liveState == "connecting") "END" else "LIVE",
+                            color = if (liveState == "live") RoutCyan else RoutIce,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clickable { if (!micGranted) showMicRationale = true else vm.toggleLive() }
+                                .padding(horizontal = 12.dp, vertical = 12.dp))
+                    }
+                    Spacer(Modifier.width(6.dp))
                     GlassBox(radius = 50.dp) {
                         Text(if (state == AssistantState.LISTENING) "STOP" else "MIC",
                             color = if (state == AssistantState.LISTENING) RoutViolet else RoutIce,
