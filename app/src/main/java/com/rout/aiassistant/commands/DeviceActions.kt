@@ -146,6 +146,31 @@ object DeviceActions {
         else ActionResult(false, "WhatsApp is phone par nahi mila.")
     }
 
+
+    /** WhatsApp voice/video call via the contact's WhatsApp data row; falls back to opening the chat. */
+    fun whatsappCall(context: Context, contactId: Long, number: String, video: Boolean): ActionResult {
+        val mime = if (video) "vnd.android.cursor.item/vnd.com.whatsapp.video.call" else "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"
+        try {
+            context.contentResolver.query(
+                ContactsContract.Data.CONTENT_URI,
+                arrayOf(ContactsContract.Data._ID),
+                ContactsContract.Data.CONTACT_ID + " = ? AND " + ContactsContract.Data.MIMETYPE + " = ?",
+                arrayOf(contactId.toString(), mime), null
+            )?.use { c ->
+                if (c.moveToFirst()) {
+                    val uri = android.content.ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, c.getLong(0))
+                    val intent = Intent(Intent.ACTION_VIEW, uri).setPackage("com.whatsapp")
+                    if (launch(context, intent)) return ActionResult(true, if (video) "WhatsApp video call lag raha hai." else "WhatsApp call lag raha hai.")
+                }
+            }
+        } catch (_: Exception) {}
+        // Fallback: open the chat so the user taps the call button
+        val digits = number.filter { it.isDigit() }
+        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$digits")).setPackage("com.whatsapp")
+        return if (launch(context, fallback)) ActionResult(true, "WhatsApp chat khul gayi - upar call ka button dabao.")
+        else ActionResult(false, "WhatsApp is phone par nahi mila.")
+    }
+
     // --- Do Not Disturb (needs Notification Policy Access - a one-time special grant) ---
     private fun hasPolicyAccess(context: Context): Boolean {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -392,17 +417,25 @@ object DeviceActions {
         else ActionResult(false, "Google Maps is not available for navigation.")
     }
 
-    fun findContact(context: Context, name: String): Pair<String, String>? {
+    fun findContact(context: Context, name: String): Pair<String, String>? =
+        findContactWithId(context, name)?.let { it.first to it.second }
+
+    /** (display name, number, contact id) for the first fuzzy name match. */
+    fun findContactWithId(context: Context, name: String): Triple<String, String, Long>? {
         val resolver = context.contentResolver
         val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
         val cursor = resolver.query(
             uri,
-            arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID
+            ),
             "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
             arrayOf("%$name%"), null
         ) ?: return null
         cursor.use {
-            if (it.moveToFirst()) return it.getString(0) to it.getString(1)
+            if (it.moveToFirst()) return Triple(it.getString(0), it.getString(1), it.getLong(2))
         }
         return null
     }

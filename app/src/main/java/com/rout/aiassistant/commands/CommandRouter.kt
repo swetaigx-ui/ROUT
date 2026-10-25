@@ -208,6 +208,47 @@ class CommandRouter(
             return true to "${contact.first} ko WhatsApp: \"$body\" - screen par confirm karo ya 'haan' bolo."
         }
 
+        // --- WhatsApp voice/video call: contact shown, confirm, then deep-link into the call ---
+        Regex("^(.+?)\\s+ko\\s+(?:whatsapp|\\u0935\\u094d\\u0939\\u093e\\u091f\\u094d\\u0938\\u090f\\u092a)\\s+(?:(video)\\s+)?call\\s+(?:karo|kar do|lagao|marao)$").find(t)?.let { m ->
+            val name = m.groupValues[1].trim()
+            val video = m.groupValues[2].isNotEmpty()
+            if (!has(Manifest.permission.READ_CONTACTS)) {
+                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+            }
+            val contact = DeviceActions.findContactWithId(context, name)
+                ?: return false to "\"$name\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
+            val kind = if (video) "video call" else "call"
+            requestConfirmation(ConfirmRequest("wa-call", "WhatsApp $kind: ${contact.first} (${contact.second})?") {
+                DeviceActions.whatsappCall(context, contact.third, contact.second, video).message
+            })
+            return true to "${contact.first} ko WhatsApp $kind karna hai - screen par confirm karo ya 'haan' bolo."
+        }
+
+        // --- Read notifications aloud (user-enabled notification access) ---
+        if (Regex("^(?:(?:mere|my)\\s+)?(?:messages?|notifications?)\\s+(?:padho|padh do|batao|sunao)|what are my notifications$").matches(t)) {
+            val svc = com.rout.aiassistant.service.RoutMediaListenerService.instance
+            if (svc == null) {
+                launchSettingsListener(context)
+                return false to "Notifications padhne ke liye one-time notification access chahiye. Settings kholi hai - ROUT ko allow karo, fir dobara bolo."
+            }
+            val items = svc.recentSummaries(5)
+            return if (items.isEmpty()) true to "Abhi koi notification nahi hai."
+            else true to "Tumhari latest notifications: " + items.joinToString(". ") + "."
+        }
+
+        // --- Translate: one-shot via backend brain ---
+        Regex("^(?:translate|anuvad|\\u0905\\u0928\\u0941\\u0935\\u093e\\u0926)\\s+(.+?)\\s+(?:in|to|into|mein)\\s+(english|hindi|hinglish)$").find(t)?.let { m ->
+            val pm = providerManager()
+            if (pm.provider() == null) return false to "Translate ke liye ROUT AI (backend) connect hona chahiye. Settings mein device connect karo."
+            val lang = m.groupValues[2].replaceFirstChar { it.uppercase() }
+            return when (val r = pm.provider()!!.chat(emptyList(),
+                "Translate the following into $lang. Reply with ONLY the translation, no explanation.\n\n" + m.groupValues[1])) {
+                is AiResult.Reply -> true to r.text
+                is AiResult.SetupRequired -> false to r.message
+                is AiResult.Failure -> false to friendlyFailure(r.reason)
+            }
+        }
+
         // --- Calendar event by voice: day + time + title, show-then-confirm ---
         parseCalendar(t)?.let { (title, start, end) ->
             val when_ = java.text.SimpleDateFormat("EEE d MMM, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(start))
@@ -520,6 +561,14 @@ class CommandRouter(
                 is AiResult.Failure -> friendlyFailure(r.reason)
             }
         }
+    }
+
+    private fun launchSettingsListener(context: Context) {
+        try {
+            val i = android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        } catch (_: Exception) {}
     }
 
     private var inRoutine = false
