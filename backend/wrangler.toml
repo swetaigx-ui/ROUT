@@ -1,4 +1,5 @@
 name = "rout-backend"
+account_id = "1edfe850ba4cb0d037ef55ab84236d0a"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 
