@@ -54,14 +54,62 @@ object DeviceActions {
         "clock" to listOf("com.google.android.deskclock", "com.android.deskclock"),
         "files" to listOf("com.google.android.documentsui"),
         "messages" to listOf("com.google.android.apps.messaging", "com.android.messaging"),
-        "phone" to listOf("com.google.android.dialer", "com.android.dialer")
+        "phone" to listOf("com.google.android.dialer", "com.android.dialer"),
+        "translate" to listOf("com.google.android.apps.translate"),
+        "drive" to listOf("com.google.android.apps.docs")
     )
 
+    // Devanagari app names -> latin alias keys. First contained key wins.
+    private val devanagariAliases = listOf(
+        "\u092f\u0942\u091f\u094d\u092f\u0942\u092c" to "youtube",
+        "\u0935\u094d\u0939\u093e\u091f\u094d\u0938\u090f\u092a" to "whatsapp",
+        "\u0935\u094d\u0939\u093e\u091f\u094d\u0938\u0910\u092a" to "whatsapp",
+        "\u0935\u093e\u091f\u094d\u0938\u090f\u092a" to "whatsapp",
+        "\u0907\u0902\u0938\u094d\u091f\u093e\u0917\u094d\u0930\u093e\u092e" to "instagram",
+        "\u0907\u0928\u094d\u0938\u094d\u091f\u093e\u0917\u094d\u0930\u093e\u092e" to "instagram",
+        "\u0907\u0902\u0938\u094d\u091f\u093e" to "instagram",
+        "\u092b\u0947\u0938\u092c\u0941\u0915" to "facebook",
+        "\u0915\u094d\u0930\u094b\u092e" to "chrome",
+        "\u091c\u0940\u092e\u0947\u0932" to "gmail",
+        "\u092e\u0948\u092a\u094d\u0938" to "maps",
+        "\u0928\u0915\u094d\u0936\u093e" to "maps",
+        "\u0915\u0948\u092e\u0930\u093e" to "camera",
+        "\u092b\u094b\u091f\u094b\u091c\u093c" to "photos",
+        "\u092b\u094b\u091f\u094b" to "photos",
+        "\u0917\u0948\u0932\u0930\u0940" to "photos",
+        "\u0938\u0947\u091f\u093f\u0902\u0917\u094d\u0938" to "settings",
+        "\u0938\u0947\u091f\u093f\u0902\u0917" to "settings",
+        "\u092a\u094d\u0932\u0947 \u0938\u094d\u091f\u094b\u0930" to "play store",
+        "\u0915\u0948\u0932\u0915\u0941\u0932\u0947\u091f\u0930" to "calculator",
+        "\u0915\u094d\u0932\u0949\u0915" to "clock",
+        "\u0918\u0921\u093c\u0940" to "clock",
+        "\u092b\u093e\u0907\u0932\u0947\u0902" to "files",
+        "\u092b\u093e\u0907\u0932" to "files",
+        "\u0938\u0902\u0926\u0947\u0936" to "messages",
+        "\u092e\u0948\u0938\u0947\u091c" to "messages",
+        "\u0921\u093e\u092f\u0932\u0930" to "phone",
+        "\u092b\u094b\u0928" to "phone",
+        "\u0938\u094d\u092a\u0949\u091f\u093f\u092b\u093e\u0908" to "spotify",
+        "\u091f\u0947\u0932\u0940\u0917\u094d\u0930\u093e\u092e" to "telegram",
+        "\u091f\u094d\u0935\u093f\u091f\u0930" to "twitter",
+        "\u0938\u094d\u0928\u0948\u092a\u091a\u0948\u091f" to "snapchat",
+        "\u091f\u094d\u0930\u093e\u0902\u0938\u0932\u0947\u091f" to "translate",
+        "\u0905\u0928\u0941\u0935\u093e\u0926" to "translate",
+        "\u0917\u0942\u0917\u0932" to "google",
+        "\u0921\u094d\u0930\u093e\u0907\u0935" to "drive"
+    )
+
+    /** Map a spoken Devanagari app name to its latin alias key, if known. */
+    fun normalizeAppName(name: String): String {
+        if (name.none { it in '\u0900'..'\u097F' }) return name
+        return devanagariAliases.firstOrNull { name.contains(it.first) }?.second ?: name
+    }
+
     fun openApp(context: Context, nameRaw: String): ActionResult {
-        val name = nameRaw.trim().lowercase()
+        val name = normalizeAppName(nameRaw.trim().lowercase())
         val pm = context.packageManager
         appAliases[name]?.forEach { pkg ->
-            pm.getLaunchIntentForPackage(pkg)?.let { if (launch(context, it)) return ActionResult(true, "Opening $nameRaw") }
+            pm.getLaunchIntentForPackage(pkg)?.let { if (launch(context, it)) return ActionResult(true, "$nameRaw khol diya.") }
         }
         // Fallback: fuzzy search installed launchable apps
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -75,11 +123,11 @@ object DeviceActions {
             pm.getLaunchIntentForPackage(pkg)?.let {
                 if (launch(context, it)) {
                     val label = match.loadLabel(pm).toString()
-                    return ActionResult(true, "Opening $label")
+                    return ActionResult(true, "$label khol diya.")
                 }
             }
         }
-        return ActionResult(false, "I could not find an app called $nameRaw on this phone.")
+        return ActionResult(false, "\"$nameRaw\" naam ka app is phone par nahi mila. Naam saaf bolke dobara try karo.")
     }
 
     fun webSearch(context: Context, query: String): ActionResult {

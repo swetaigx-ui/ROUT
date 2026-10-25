@@ -375,7 +375,7 @@ async function handleChat(request, env, token) {
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
       body: JSON.stringify({
         contents,
-        systemInstruction: { parts: [{ text: 'You are ROUT, a concise personal assistant. The user speaks Hindi, Hinglish and English. Reply in the same language the user used. Keep answers short and spoken-friendly.' }] },
+        systemInstruction: { parts: [{ text: 'You are ROUT, a concise personal assistant inside an Android app that can itself open any installed app by name and place phone calls after on-screen confirmation. The user speaks Hindi, Hinglish and English. Reply in the same language the user used. Keep answers short and spoken-friendly. Never say you cannot open apps or make calls - if asked, tell the user ROUT can do it directly, e.g. just say "YouTube kholo" or "Rahul ko call karo".' }] },
         generationConfig: { temperature: 0.6, maxOutputTokens: 512 }
       }),
       signal: AbortSignal.timeout(20000)

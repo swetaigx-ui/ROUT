@@ -17,6 +17,44 @@ import com.rout.aiassistant.data.MemoryFact
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
 
+internal val OPEN_VERBS = listOf(
+    "khol do na", "khol dijiye", "open karo na", "open kar do", "kholo", "khol do", "kholna",
+    "kholiye", "open karo", "chalao", "chalu karo", "shuru karo",
+    "\u0916\u094b\u0932 \u0926\u0940\u091c\u093f\u090f", "\u0916\u094b\u0932 \u0926\u094b", "\u0916\u094b\u0932\u094b", "\u0916\u094b\u0932\u093f\u090f",
+    "\u0913\u092a\u0928 \u0915\u0930\u094b \u0928\u093e", "\u0913\u092a\u0928 \u0915\u0930 \u0926\u094b", "\u0913\u092a\u0928 \u0915\u0940\u091c\u093f\u090f", "\u0913\u092a\u0928 \u0915\u0930\u094b",
+    "\u091a\u093e\u0932\u0942 \u0915\u0930 \u0926\u094b", "\u091a\u093e\u0932\u0942 \u0915\u0930\u094b",
+    "\u0936\u0941\u0930\u0942 \u0915\u0930\u094b"
+).sortedByDescending { it.length }
+
+private val POLITE_PREFIX = Regex(
+    "^(?:(?:hello|hii?|hey|ok(?:ay)?|please|pl[sz]|can you|could you|would you|kya tum|kya aap|" +
+    "\u0939\u0947\u0932\u094b|\u0939\u0948\u0932\u094b|\u0939\u093e\u092f|\u0939\u0947|\u0913\u0915\u0947|" +
+    "\u092a\u094d\u0932\u0940\u091c\u093c|\u0915\u094d\u092f\u093e \u0924\u0941\u092e|\u0915\u094d\u092f\u093e \u0906\u092a|\u0915\u094d\u092f\u093e)\\s+)+"
+)
+private val POLITE_SUFFIX = Regex(
+    "(?:\\s+(?:na|ji|bhai|yaar|please|pl[sz]|ok(?:ay)?|\u0928\u093e|\u091c\u0940|\u092d\u093e\u0908|\u092f\u093e\u0930|\u092a\u094d\u0932\u0940\u091c\u093c|\u0913\u0915\u0947))+$"
+)
+
+/** Pure: extract the app name from any open-intent phrasing (Hindi, Devanagari, English, question forms). */
+internal fun extractOpenTarget(text: String): String? {
+    var t = POLITE_PREFIX.replace(text.trim().lowercase(), "")
+    t = POLITE_SUFFIX.replace(t, "").trim()
+    if (t.isEmpty()) return null
+    for (v in OPEN_VERBS) {
+        if (t.startsWith("$v ")) {
+            val target = t.removePrefix("$v ").trim()
+            if (target.isNotEmpty()) return target
+        }
+    }
+    for (v in OPEN_VERBS) {
+        if (t.endsWith(" $v")) {
+            val target = t.removeSuffix(" $v").trim()
+            if (target.isNotEmpty()) return target
+        }
+    }
+    return null
+}
+
 data class ConfirmRequest(
     val id: String,
     val description: String,
@@ -61,26 +99,28 @@ class CommandRouter(
 
         // --- App launching by trailing verb: "youtube kholo", "whatsapp khol do", "translate chalao" ---
         // Checked before every search rule so a named app opens instead of being searched.
-        val openSuffix = Regex("^(.+?)\\s+(?:kholo|khol do|kholna|khol do na|kholiye|open karo|chalao|chalu karo|shuru karo)$")
-            .find(t)
-        if (openSuffix != null) {
-            val target = openSuffix.groupValues[1].trim()
-            if (!target.contains("search") && !target.startsWith("youtube par") && !target.startsWith("youtube pe")) {
-                val r = DeviceActions.openApp(context, target)
-                if (r.ok) return true to r.message
-                // Not an installed app - try it as a website instead of failing silently.
-                val w = DeviceActions.openWebsite(context, target)
+        val openTarget = extractOpenTarget(t)
+        if (openTarget != null &&
+            !openTarget.contains("search") && !openTarget.startsWith("youtube par") && !openTarget.startsWith("youtube pe") &&
+            !openTarget.contains("\u0938\u0930\u094d\u091a")) {
+            val r = DeviceActions.openApp(context, openTarget)
+            if (r.ok) return true to r.message
+            // Not an installed app - try it as a website instead of failing silently (latin names only).
+            if (openTarget.none { it in '\u0900'..'\u097F' }) {
+                val w = DeviceActions.openWebsite(context, openTarget)
                 return w.ok to if (w.ok) w.message else r.message
             }
+            return false to r.message
         }
 
         // --- Help ---
         if (t == "help" || t == "madad" || t.contains("what can you do") || t.contains("kya kar sakte")) {
-            return true to "Main ye sab kar sakta hoon: koi bhi app kholo (\"YouTube kholo\"), kisi ko call karo (\"Rahul ko call karo\"), weather, time, alarm, timer, torch, notes, tasks, reminders, Google ya YouTube search, maps navigation - aur kuch bhi poochho, main AI se jawab dunga."
+            return true to "Main ye sab kar sakta hoon: koi bhi app kholo - kisi bhi bhasha mein bolo (\"YouTube kholo\", \"\u092f\u0942\u091f\u094d\u092f\u0942\u092c \u0913\u092a\u0928 \u0915\u0930\u094b\"), kisi ko call karo (\"Rahul ko call karo\"), weather, time, alarm, timer, torch, notes, tasks, reminders, Google ya YouTube search, maps navigation - aur kuch bhi poochho, main AI se jawab dunga."
         }
 
         // --- App launching ---
-        val openMatch = Regex("^(?:open|launch|start|kholo|khol do|chalao)\\s+(.+)$").find(t)
+        val tPolite = POLITE_PREFIX.replace(t, "")
+        val openMatch = Regex("^(?:open|launch|start)\\s+(.+)$").find(tPolite)
         if (openMatch != null) {
             val target = openMatch.groupValues[1].trim()
             if (target.contains("search") || target.startsWith("youtube par")) {
@@ -314,7 +354,7 @@ class CommandRouter(
                     redactedScreenText + "\n---\nQuestion: " + question)) {
                 is AiResult.Reply -> r.text
                 is AiResult.SetupRequired -> r.message
-                is AiResult.Failure -> "AI abhi jawab nahi de paya: ${r.reason}"
+                is AiResult.Failure -> friendlyFailure(r.reason)
             }
         }
     }
@@ -343,6 +383,16 @@ class CommandRouter(
         return true to "In ${w.place}: ${w.tempC}°C, ${w.summary}, humidity ${w.humidity} percent, wind ${w.windKmh} km/h."
     }
 
+    private fun friendlyFailure(reason: String): String = when {
+        reason.contains("unreachable", true) || reason.contains("timeout", true) ->
+            "ROUT AI ka server abhi jawab nahi de raha. Net check karke ek baar aur try karo - aksar doosri baar ho jaata hai."
+        reason.contains("HTTP 401") || reason.contains("HTTP 403") ->
+            "ROUT AI ka connection expire ho gaya lagta hai. Settings mein device dobara connect karo."
+        reason.contains("HTTP 429") ->
+            "ROUT AI thoda busy hai. Kuch second ruk kar dobara try karo."
+        else -> "ROUT AI abhi jawab nahi de paya. Thodi der baad dobara try karo."
+    }
+
     private suspend fun aiFallback(raw: String): Pair<Boolean, String> {
         val pm = providerManager()
         return when (pm.mode()) {
@@ -354,7 +404,7 @@ class CommandRouter(
             else -> when (val r = pm.provider()!!.chat(history(), raw)) {
                 is AiResult.Reply -> true to r.text
                 is AiResult.SetupRequired -> false to r.message
-                is AiResult.Failure -> false to "ROUT AI could not answer: ${r.reason}"
+                is AiResult.Failure -> false to friendlyFailure(r.reason)
             }
         }
     }

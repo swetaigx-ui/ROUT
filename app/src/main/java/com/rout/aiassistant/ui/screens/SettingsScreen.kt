@@ -21,6 +21,7 @@ import com.rout.aiassistant.commands.MediaControl
 import com.rout.aiassistant.ui.theme.*
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean = false) {
     val scrollState = rememberScrollState()
@@ -96,7 +97,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     color = RoutDim, style = MaterialTheme.typography.bodyMedium
                 )
                 Text("Female", color = RoutIce, style = MaterialTheme.typography.labelSmall)
-                Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
+                FlowRow(Modifier.fillMaxWidth()) {
                     listOf("Achernar", "Aoede", "Despina", "Sulafat", "Zephyr").forEach { v ->
                         FilterChip(
                             selected = currentVoice == v,
@@ -107,7 +108,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     }
                 }
                 Text("Male", color = RoutIce, style = MaterialTheme.typography.labelSmall)
-                Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
+                FlowRow(Modifier.fillMaxWidth()) {
                     listOf("Achird", "Algieba", "Charon", "Umbriel", "Sadaltager").forEach { v ->
                         FilterChip(
                             selected = currentVoice == v,

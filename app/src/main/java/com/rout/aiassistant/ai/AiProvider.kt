@@ -48,7 +48,7 @@ private fun post(url: String, body: JSONObject, headers: Map<String, String>, ti
 class BackendProxyProvider(private val baseUrl: String, private val deviceToken: String) : AiProvider {
     override val name = "ROUT backend"
     override suspend fun chat(history: List<ChatTurn>, userText: String): AiResult = withContext(Dispatchers.IO) {
-        try {
+        fun attempt(): AiResult = try {
             val msgs = JSONArray()
             history.takeLast(20).forEach { t ->
                 msgs.put(JSONObject().put("role", if (t.role == "user") "user" else "assistant").put("text", t.text))
@@ -65,6 +65,9 @@ class BackendProxyProvider(private val baseUrl: String, private val deviceToken:
         } catch (e: Exception) {
             AiResult.Failure("Backend unreachable: ${e.javaClass.simpleName}")
         }
+        val first = attempt()
+        // One automatic retry on network failure (cold starts, transients) before showing an error.
+        if (first is AiResult.Failure && first.reason.startsWith("Backend unreachable")) attempt() else first
     }
 }
 
@@ -88,8 +91,11 @@ class GeminiDirectProvider(private val apiKey: String) : AiProvider {
                 .put("parts", JSONArray().put(JSONObject().put("text", userText))))
             val body = JSONObject().put("contents", contents)
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text",
-                    "You are ROUT, a concise personal assistant. The user speaks Hindi, Hinglish and English. " +
-                    "Reply in the same language the user used. Keep answers short and spoken-friendly."))))
+                    "You are ROUT, a concise personal assistant inside an Android app that can itself open any " +
+                    "installed app by name and place phone calls after on-screen confirmation. The user speaks Hindi, " +
+                    "Hinglish and English. Reply in the same language the user used. Keep answers short and spoken-friendly. " +
+                    "Never say you cannot open apps or make calls - if asked, tell the user ROUT can do it directly, " +
+                    "e.g. just say \"YouTube kholo\" or \"Rahul ko call karo\"."))))
             val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
                 "gemini-3.6-flash:generateContent"
             val (code, text) = post(url, body, mapOf("x-goog-api-key" to apiKey))
