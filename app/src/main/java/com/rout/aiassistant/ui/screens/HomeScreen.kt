@@ -55,7 +55,9 @@ import com.rout.aiassistant.voice.AssistantState
 @Composable
 fun HomeScreen(vm: MainViewModel, nav: NavController) {
     val state by vm.assistantState.collectAsState()
-    val emotion by vm.emotion.collectAsState()
+    val rawEmotion by vm.emotion.collectAsState()
+    val warbyEmotionsOn by vm.warbyEmotions.collectAsState()
+    val emotion = if (warbyEmotionsOn) rawEmotion else null
     val rms by vm.rms.collectAsState()
     val partial by vm.partial.collectAsState()
     val messages by vm.messages.collectAsState()

@@ -58,6 +58,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val personaMode = prefs.personaMode.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val warbyEmotions = prefs.warbyEmotions.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     // Warby's current emotion, detected from the user's actual words (his warby-orb.js rules).
     val emotion = kotlinx.coroutines.flow.MutableStateFlow<com.rout.aiassistant.ui.components.WarbyEmotion?>(null)
