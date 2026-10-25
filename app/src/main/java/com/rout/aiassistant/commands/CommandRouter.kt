@@ -179,7 +179,7 @@ class CommandRouter(
     }
 
     private suspend fun singleStep(raw: String): Pair<Boolean, String> {
-        val t = raw.lowercase().trim()
+        val t = HindiNormal.latinize(raw.lowercase().trim())
         val permNotified = object { var done = false }
         fun needPerm() { if (!permNotified.done) { permNotified.done = true; onPermissionNeeded(raw) } }
 
