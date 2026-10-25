@@ -66,4 +66,30 @@ object WeatherService {
             Triple(r.getDouble("latitude"), r.getDouble("longitude"), label)
         } catch (e: Exception) { null }
     }
+
+    /** Sunrise and sunset times (local) for today, e.g. ("6:12 am", "5:48 pm"). */
+    suspend fun sunriseSunset(lat: Double, lon: Double): Pair<String, String>? = withContext(Dispatchers.IO) {
+        try {
+            val raw = get("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                "&daily=sunrise,sunset&forecast_days=1&timezone=auto")
+            val daily = JSONObject(raw).getJSONObject("daily")
+            val sr = daily.getJSONArray("sunrise").getString(0)
+            val ss = daily.getJSONArray("sunset").getString(0)
+            fun hhmm(iso: String): String {
+                val t = iso.substringAfter("T")
+                var h = t.substringBefore(":").toInt(); val m = t.substringAfter(":")
+                val ampm = if (h >= 12) "pm" else "am"; if (h > 12) h -= 12; if (h == 0) h = 12
+                return "$h:$m $ampm"
+            }
+            hhmm(sr) to hhmm(ss)
+        } catch (e: Exception) { null }
+    }
+
+    /** US AQI for a location, or null when the air-quality service is unreachable. */
+    suspend fun aqi(lat: Double, lon: Double): Int? = withContext(Dispatchers.IO) {
+        try {
+            val raw = get("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=$lat&longitude=$lon&current=us_aqi")
+            JSONObject(raw).getJSONObject("current").optInt("us_aqi").takeIf { it > 0 }
+        } catch (e: Exception) { null }
+    }
 }

@@ -125,6 +125,14 @@ internal fun parseBriefing(text: String, now: java.util.Calendar = java.util.Cal
     return Triple(cmd, hour, minute)
 }
 
+
+internal object QuickAnswersEval {
+    fun fmtPub(v: Double): String {
+        val r = kotlin.math.round(v * 100) / 100.0
+        return if (r == kotlin.math.floor(r)) r.toLong().toString() else r.toString()
+    }
+}
+
 data class ConfirmRequest(
     val id: String,
     val description: String,
@@ -293,7 +301,125 @@ class CommandRouter(
             }
         }
 
-        // --- Calendar event by voice: day + time + title, show-then-confirm ---
+        // ===== Siri parity: quick answers (math, random, units, currency, dates, moon) =====
+        QuickAnswers.evalMath(t)?.let { return true to it }
+        QuickAnswers.randomAnswer(t)?.let { return true to it }
+        QuickAnswers.convertLocalUnits(t)?.let { return true to it }
+        QuickAnswers.parseCurrency(t)?.let { (amount, from, to) ->
+            val out = QuickAnswers.fx(amount, from, to)
+            return if (out != null) true to "${QuickAnswersEval.fmtPub(amount)} $from = ${QuickAnswersEval.fmtPub(out)} $to"
+            else false to "Currency rates abhi mil nahi rahe. Net check karke dobara try karo."
+        }
+        QuickAnswers.dateFacts(t)?.let { return true to it }
+        QuickAnswers.moonPhaseAnswer(t)?.let { return true to it }
+
+        // --- Meaning / spelling via backend brain ---
+        QuickAnswers.parseMeaning(raw.trim())?.let { (mode, word) ->
+            val pm = providerManager()
+            if (pm.provider() != null) {
+                val prompt = if (mode == "spell")
+                    "Spell the word \"$word\" letter by letter, then give it in one line. Keep it very short."
+                else
+                    "Give the meaning of \"$word\" in one short simple line, with one example. If the user asked in Hindi/Hinglish, answer in Hinglish."
+                when (val r = pm.provider()!!.chat(emptyList(), prompt)) {
+                    is AiResult.Reply -> return true to r.text
+                    else -> {} // fall through to AI fallback
+                }
+            }
+        }
+
+        // --- Emergency call: 112, always show-then-confirm ---
+        if (QuickAnswers.isEmergencyCall(t)) {
+            requestConfirmation(ConfirmRequest("call", "Emergency number 112 par call karein?") {
+                DeviceActions.placeCall(context, "112")
+            })
+            return true to "Emergency number 112 par call karna hai - screen par confirm karo ya 'haan' bolo."
+        }
+
+        // --- Voice email: contact/address + body, show-then-confirm ---
+        QuickAnswers.parseEmail(raw.trim())?.let { (toRaw, body) ->
+            var to = toRaw
+            if (!to.contains("@")) {
+                if (!has(Manifest.permission.READ_CONTACTS)) {
+                    return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                }
+                to = DeviceActions.findContactEmail(context, to)
+                    ?: return false to "\"$toRaw\" ka email address nahi mila. Poora email address bata do, jaise \"email to name@gmail.com saying ...\"."
+            }
+            val toFinal = to
+            requestConfirmation(ConfirmRequest("email", "Email $toFinal: \"$body\"") {
+                if (DeviceActions.emailIntent(context, toFinal, body)) "Email app khul gayi - draft review karke send kar do."
+                else "Koi email app nahi mili."
+            })
+            return true to "$toFinal ko email: \"$body\" - screen par confirm karo ya 'haan' bolo."
+        }
+
+        // --- ETA / travel time: Maps directions with live ETA ---
+        QuickAnswers.parseEta(t)?.let { dest ->
+            if (dest.isNotEmpty()) {
+                val r = DeviceActions.directionsEta(context, dest)
+                return r.ok to r.message
+            }
+        }
+
+        // --- Missed calls + SMS readout ---
+        if (Regex("(?:missed calls?|missed call)").containsMatchIn(t) && Regex("(dikhao|batao|kya hai|check|kaun|list|show)").containsMatchIn(t)) {
+            if (!has(Manifest.permission.READ_CALL_LOG)) {
+                return false to "Missed calls ke liye call log permission chahiye. Prompt mein allow karo, fir dobara bolo."
+            }
+            val items = DeviceActions.recentMissedCalls(context)
+            return if (items.isEmpty()) true to "Koi missed call nahi hai."
+            else true to "Tumhari missed calls: " + items.joinToString(". ") + "."
+        }
+        if (Regex("^(?:sms|messages?|texts?)\\s+(?:padho|batao|dikhao|check\\s*karo|sunao)$|^(?:mere|my)\\s+(?:sms|texts?)\\s+(?:padho|batao|dikhao)$").matches(t)) {
+            if (!has(Manifest.permission.READ_SMS)) {
+                return false to "SMS padhne ke liye SMS permission chahiye. Prompt mein allow karo, fir dobara bolo."
+            }
+            val items = DeviceActions.recentSms(context)
+            return if (items.isEmpty()) true to "Koi recent SMS nahi hai."
+            else true to "Tumhare latest SMS: " + items.joinToString(". ") + "."
+        }
+
+        // --- Extra one-tap settings panels ---
+        when {
+            Regex("^airplane mode(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "airplane"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
+            }
+            Regex("^battery settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "battery"); return r.ok to r.message
+            }
+            Regex("^storage settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "storage"); return r.ok to r.message
+            }
+            Regex("^(?:app|apps) settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "apps"); return r.ok to r.message
+            }
+            Regex("^sound settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "sound"); return r.ok to r.message
+            }
+            Regex("^display settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "display"); return r.ok to r.message
+            }
+            Regex("^privacy settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "privacy"); return r.ok to r.message
+            }
+            Regex("^location settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "location"); return r.ok to r.message
+            }
+            Regex("^accessibility settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "accessibility"); return r.ok to r.message
+            }
+            Regex("^security settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "security"); return r.ok to r.message
+            }
+        }
+
+        // --- Weather scoped: city / AQI / sunrise-sunset, else current location ---
+        if (Regex("(weather|mausam|temperature|aqi|air quality|sunrise|sunset|suryoday|suryast)").containsMatchIn(t)) {
+            return weatherScoped(t)
+        }
+
+                // --- Calendar event by voice: day + time + title, show-then-confirm ---
         parseCalendar(t)?.let { (title, start, end) ->
             val when_ = java.text.SimpleDateFormat("EEE d MMM, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(start))
             requestConfirmation(ConfirmRequest("calendar", "Event: $title - $when_") {
@@ -363,7 +489,7 @@ class CommandRouter(
 
         // --- Help ---
         if (t == "help" || t == "madad" || t.contains("what can you do") || t.contains("kya kar sakte")) {
-            return true to "Main ye sab kar sakta hoon: koi bhi app kholo - kisi bhi bhasha mein bolo (\"YouTube kholo\", \"\u092f\u0942\u091f\u094d\u092f\u0942\u092c \u0913\u092a\u0928 \u0915\u0930\u094b\"), kisi ko call karo (\"Rahul ko call karo\"), weather, time, alarm, timer, torch, notes, tasks, reminders, Google/YouTube/Spotify search, maps navigation, WhatsApp message, calendar events, routines (\"good morning\"), DND/silent mode, WiFi/Bluetooth panels, screenshot - aur kuch bhi poochho, main AI se jawab dunga."
+            return true to "Main ye sab kar sakta hoon: koi bhi app kholo - kisi bhi bhasha mein bolo (\"YouTube kholo\", \"\u092f\u0942\u091f\u094d\u092f\u0942\u092c \u0913\u092a\u0928 \u0915\u0930\u094b\"), kisi ko call karo (\"Rahul ko call karo\"), weather, time, alarm, timer, torch, notes, tasks, reminders, Google/YouTube/Spotify search, maps navigation, WhatsApp message, calendar events, routines (\"good morning\"), DND/silent mode, WiFi/Bluetooth panels, screenshot - math (\"45 guna 12\"), unit/currency conversion, coin toss, dice, days-until, moon phase, kisi city ka weather/AQI/sunrise, meaning/spelling, missed calls, SMS padhna, email, ETA - aur kuch bhi poochho, main AI se jawab dunga."
         }
 
         // --- App launching ---
@@ -567,10 +693,6 @@ class CommandRouter(
             else true to "I remember: " + facts.take(6).joinToString("; ") { it.text }
         }
 
-        // --- Weather (real data via Open-Meteo, no key needed) ---
-        if (Regex("(weather|mausam|temperature)").containsMatchIn(t)) {
-            return weather()
-        }
 
         // --- Settings shortcuts ---
         if (t.contains("settings")) { val r = DeviceActions.openSettings(context); return r.ok to r.message }
@@ -631,6 +753,49 @@ class CommandRouter(
         } finally {
             inRoutine = false
         }
+    }
+
+    private suspend fun weatherScoped(t: String): Pair<Boolean, String> {
+        var lat: Double? = null
+        var lon: Double? = null
+        var label = "your location"
+        val city = QuickAnswers.parseWeatherCity(t)
+        if (city != null) {
+            val geo = WeatherService.geocode(city) ?: return false to "I could not look up $city right now."
+            lat = geo.first; lon = geo.second; label = geo.third
+        } else if (has(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            try {
+                val lm = context.getSystemService(LocationManager::class.java)
+                val loc = lm.getProviders(true).firstNotNullOfOrNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
+                if (loc != null) { lat = loc.latitude; lon = loc.longitude }
+            } catch (_: SecurityException) {}
+        }
+        if (lat == null) {
+            val prefCity = prefs.weatherCity.first()
+            if (prefCity.isBlank()) {
+                return false to "For weather I need location permission or your city. Set your city in Settings, then ask again."
+            }
+            val geo = WeatherService.geocode(prefCity) ?: return false to "I could not look up $prefCity right now."
+            lat = geo.first; lon = geo.second; label = geo.third
+        }
+        if (QuickAnswers.isAqiQ(t)) {
+            val aqi = WeatherService.aqi(lat!!, lon!!) ?: return false to "Air quality service abhi jawab nahi de raha."
+            val band = when {
+                aqi <= 50 -> "acchi (good)"
+                aqi <= 100 -> "theek-thaak (moderate)"
+                aqi <= 150 -> "sensitive logon ke liye kharab"
+                aqi <= 200 -> "kharab (unhealthy)"
+                else -> "bahut kharab (very unhealthy)"
+            }
+            return true to "$label mein abhi AQI $aqi hai - hawa $band."
+        }
+        if (QuickAnswers.isSunQ(t)) {
+            val ss = WeatherService.sunriseSunset(lat!!, lon!!) ?: return false to "Sunrise/sunset data abhi nahi mil raha."
+            return true to "$label mein aaj sunrise ${ss.first} par aur sunset ${ss.second} par hai."
+        }
+        val w = WeatherService.current(lat!!, lon!!, label)
+            ?: return false to "The weather service is unreachable right now."
+        return true to "In ${w.place}: ${w.tempC}\u00b0C, ${w.summary}, humidity ${w.humidity} percent, wind ${w.windKmh} km/h."
     }
 
     private suspend fun weather(): Pair<Boolean, String> {

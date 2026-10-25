@@ -41,6 +41,12 @@ class MainActivity : ComponentActivity() {
             needed.add(Manifest.permission.WRITE_CALENDAR)
             needed.add(Manifest.permission.READ_CALENDAR)
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.READ_CALL_LOG)
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.READ_SMS)
+        }
         if (needed.isNotEmpty()) requestPermissions(needed.toTypedArray(), 42)
         intent?.getStringExtra("run_command")?.takeIf { it.isNotBlank() }?.let { cmd ->
             // Tapped a scheduled briefing notification - run its command once the UI is up.

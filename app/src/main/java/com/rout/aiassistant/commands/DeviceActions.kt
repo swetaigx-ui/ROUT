@@ -254,6 +254,15 @@ object DeviceActions {
             "batterysaver" -> Pair(Settings.ACTION_BATTERY_SAVER_SETTINGS, "Battery saver")
             "display" -> Pair(Settings.ACTION_DISPLAY_SETTINGS, "Display")
             "wireless" -> Pair(Settings.ACTION_WIRELESS_SETTINGS, "Hotspot")
+            "battery" -> Pair(Settings.ACTION_BATTERY_SAVER_SETTINGS, "Battery")
+            "storage" -> Pair(Settings.ACTION_INTERNAL_STORAGE_SETTINGS, "Storage")
+            "apps" -> Pair(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS, "Apps")
+            "sound" -> Pair(Settings.ACTION_SOUND_SETTINGS, "Sound")
+            "privacy" -> Pair(Settings.ACTION_PRIVACY_SETTINGS, "Privacy")
+            "location" -> Pair(Settings.ACTION_LOCATION_SOURCE_SETTINGS, "Location")
+            "accessibility" -> Pair(Settings.ACTION_ACCESSIBILITY_SETTINGS, "Accessibility")
+            "security" -> Pair(Settings.ACTION_SECURITY_SETTINGS, "Security")
+            "airplane" -> Pair(Settings.ACTION_AIRPLANE_MODE_SETTINGS, "Airplane mode")
             else -> return ActionResult(false, "Ye settings panel nahi mila.")
         }
         return if (launch(context, Intent(action))) ActionResult(true, "$label settings khul gayi - ek tap mein badal lo.")
@@ -516,5 +525,90 @@ object DeviceActions {
         } else {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
         }
+    }
+
+    /** Open an email draft (mailto) prefilled; user reviews and sends in their mail app. */
+    fun emailIntent(context: Context, to: String, body: String): Boolean {
+        val uri = Uri.parse("mailto:" + Uri.encode(to)).buildUpon()
+            .appendQueryParameter("body", body).build()
+        return launch(context, Intent(Intent.ACTION_SENDTO, uri))
+    }
+
+    /** Open Google Maps directions (with live ETA, no auto-navigation) to a place. */
+    fun directionsEta(context: Context, destination: String): ActionResult {
+        val uri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + Uri.encode(destination) + "&travelmode=driving")
+        return if (launch(context, Intent(Intent.ACTION_VIEW, uri)))
+            ActionResult(true, "Maps khol raha hoon - $destination ke routes aur live ETA screen par hain.")
+        else ActionResult(false, "Google Maps nahi khul paya.")
+    }
+
+    /** Recent missed calls (needs READ_CALL_LOG): "name/number (time)" lines. */
+    fun recentMissedCalls(context: Context, limit: Int = 5): List<String> {
+        val out = mutableListOf<String>()
+        try {
+            val cur = context.contentResolver.query(
+                android.provider.CallLog.Calls.CONTENT_URI,
+                arrayOf(android.provider.CallLog.Calls.CACHED_NAME, android.provider.CallLog.Calls.NUMBER, android.provider.CallLog.Calls.DATE),
+                android.provider.CallLog.Calls.TYPE + " = ?",
+                arrayOf(android.provider.CallLog.Calls.MISSED_TYPE.toString()),
+                android.provider.CallLog.Calls.DATE + " DESC"
+            ) ?: return out
+            cur.use {
+                val nameI = it.getColumnIndex(android.provider.CallLog.Calls.CACHED_NAME)
+                val numI = it.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
+                val dateI = it.getColumnIndex(android.provider.CallLog.Calls.DATE)
+                while (it.moveToNext() && out.size < limit) {
+                    val name = it.getString(nameI)?.takeIf { n -> n.isNotBlank() } ?: it.getString(numI) ?: "Unknown"
+                    val when_ = java.text.SimpleDateFormat("EEE h:mm a", java.util.Locale.getDefault()).format(java.util.Date(it.getLong(dateI)))
+                    out.add("$name ($when_)")
+                }
+            }
+        } catch (_: Exception) {}
+        return out
+    }
+
+    /** Recent inbox SMS (needs READ_SMS): "sender: preview" lines. */
+    fun recentSms(context: Context, limit: Int = 5): List<String> {
+        val out = mutableListOf<String>()
+        try {
+            val cur = context.contentResolver.query(
+                android.provider.Telephony.Sms.Inbox.CONTENT_URI,
+                arrayOf(android.provider.Telephony.Sms.ADDRESS, android.provider.Telephony.Sms.BODY),
+                null, null,
+                android.provider.Telephony.Sms.DATE + " DESC"
+            ) ?: return out
+            cur.use {
+                val addrI = it.getColumnIndex(android.provider.Telephony.Sms.ADDRESS)
+                val bodyI = it.getColumnIndex(android.provider.Telephony.Sms.BODY)
+                while (it.moveToNext() && out.size < limit) {
+                    val from = it.getString(addrI) ?: "Unknown"
+                    val body = (it.getString(bodyI) ?: "").replace(Regex("\\s+"), " ").trim().take(80)
+                    if (body.isNotEmpty()) out.add("$from: $body")
+                }
+            }
+        } catch (_: Exception) {}
+        return out
+    }
+
+    /** First email address of the first fuzzy name-matched contact, or null. */
+    fun findContactEmail(context: Context, name: String): String? {
+        val resolver = context.contentResolver
+        val uri = ContactsContract.CommonDataKinds.Email.CONTENT_URI
+        val cur = resolver.query(uri,
+            arrayOf(ContactsContract.CommonDataKinds.Email.ADDRESS, ContactsContract.CommonDataKinds.Email.DISPLAY_NAME),
+            null, null, null) ?: return null
+        val target = name.trim().lowercase()
+        cur.use {
+            val addrI = it.getColumnIndex(ContactsContract.CommonDataKinds.Email.ADDRESS)
+            val nameI = it.getColumnIndex(ContactsContract.CommonDataKinds.Email.DISPLAY_NAME)
+            while (it.moveToNext()) {
+                val dn = it.getString(nameI)?.lowercase() ?: continue
+                if (dn.contains(target) || target.contains(dn)) {
+                    val addr = it.getString(addrI)
+                    if (!addr.isNullOrBlank()) return addr
+                }
+            }
+        }
+        return null
     }
 }
