@@ -57,6 +57,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val reducedMotion = prefs.reducedMotion.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val personaMode = prefs.personaMode.stateIn(viewModelScope, SharingStarted.Eagerly, "")
 
     // Warby's current emotion, detected from the user's actual words (his warby-orb.js rules).
     val emotion = kotlinx.coroutines.flow.MutableStateFlow<com.rout.aiassistant.ui.components.WarbyEmotion?>(null)
@@ -145,9 +146,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             onPermissionNeeded = { cmd -> pendingAfterPermission = cmd }
         )
         engine.initTts()
+        viewModelScope.launch {
+            // Persona mode switches ROUT's talking style AND its voice (Ruby pattern).
+            personaMode.collect { id ->
+                val p = com.rout.aiassistant.ai.Personas.byId(id)
+                if (p.id.isNotBlank()) engine.voiceName = p.voice
+            }
+        }
     }
 
-    fun providerManager(): ProviderManager = ProviderManager(backendUrl.value, prefs.devApiKey, devAiEnabled.value, enrollment)
+    fun setPersona(id: String) {
+        viewModelScope.launch {
+            prefs.setPersonaMode(id)
+            val p = com.rout.aiassistant.ai.Personas.byId(id)
+            if (p.id.isNotBlank()) prefs.setVoiceName(p.voice)
+        }
+    }
+
+    fun providerManager(): ProviderManager = ProviderManager(backendUrl.value, prefs.devApiKey, devAiEnabled.value, enrollment, personaMode.value)
 
     fun isDeviceEnrolled(): Boolean = enrollment.isEnrolledFor(backendUrl.value)
 

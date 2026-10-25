@@ -23,6 +23,7 @@ class Prefs(private val context: Context) {
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         val DEV_AI_ENABLED = booleanPreferencesKey("dev_ai_enabled")
         val VOICE_NAME = stringPreferencesKey("voice_name")
+        val PERSONA_MODE = stringPreferencesKey("persona_mode")
         val TRANSLATE_MODE = booleanPreferencesKey("translate_mode")
         val BATTERY_ALERT = booleanPreferencesKey("battery_alert")
         val FLIP_SILENT = booleanPreferencesKey("flip_silent")
@@ -43,6 +44,7 @@ class Prefs(private val context: Context) {
     val reducedMotion: Flow<Boolean> = context.ds.data.map { it[REDUCED_MOTION] ?: false }
     val devAiEnabled: Flow<Boolean> = context.ds.data.map { it[DEV_AI_ENABLED] ?: false }
     val voiceName: Flow<String> = context.ds.data.map { it[VOICE_NAME] ?: "Achernar" }
+    val personaMode: Flow<String> = context.ds.data.map { it[PERSONA_MODE] ?: "" }
     val translateMode: Flow<Boolean> = context.ds.data.map { it[TRANSLATE_MODE] ?: false }
     val batteryAlert: Flow<Boolean> = context.ds.data.map { it[BATTERY_ALERT] ?: false }
     val flipSilent: Flow<Boolean> = context.ds.data.map { it[FLIP_SILENT] ?: false }
@@ -66,6 +68,7 @@ class Prefs(private val context: Context) {
     suspend fun setReducedMotion(v: Boolean) = context.ds.edit { it[REDUCED_MOTION] = v }
     suspend fun setDevAiEnabled(v: Boolean) = context.ds.edit { it[DEV_AI_ENABLED] = v }
     suspend fun setVoiceName(v: String) = context.ds.edit { it[VOICE_NAME] = v }
+    suspend fun setPersonaMode(v: String) = context.ds.edit { it[PERSONA_MODE] = v }
     suspend fun setTranslateMode(v: Boolean) = context.ds.edit { it[TRANSLATE_MODE] = v }
     suspend fun setBatteryAlert(v: Boolean) = context.ds.edit { it[BATTERY_ALERT] = v }
     suspend fun setFlipSilent(v: Boolean) = context.ds.edit { it[FLIP_SILENT] = v }

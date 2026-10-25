@@ -36,7 +36,10 @@ class ReplyReceiver : BroadcastReceiver() {
                 val db = RoutDatabase.get(context)
                 val router = CommandRouter(
                     context = context, db = db, prefs = prefs,
-                    providerManager = { ProviderManager(Prefs.DEFAULT_BACKEND_URL, prefs.devApiKey, false, en) },
+                    providerManager = {
+                    val pid = kotlinx.coroutines.runBlocking { prefs.personaMode.first() }
+                    ProviderManager(Prefs.DEFAULT_BACKEND_URL, prefs.devApiKey, false, en, pid)
+                },
                     history = { emptyList() },
                     requestConfirmation = { }
                 )

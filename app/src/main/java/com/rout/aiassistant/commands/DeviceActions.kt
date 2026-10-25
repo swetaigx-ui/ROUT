@@ -38,6 +38,32 @@ object DeviceActions {
 
     private val appAliases = mapOf(
         "youtube" to listOf("com.google.android.youtube"),
+        "yt" to listOf("com.google.android.youtube"),
+        "insta" to listOf("com.instagram.android"),
+        "wa" to listOf("com.whatsapp"),
+        "fb" to listOf("com.facebook.katana"),
+        "facebook" to listOf("com.facebook.katana"),
+        "gcam" to listOf("com.google.android.GoogleCamera"),
+        "twitter" to listOf("com.twitter.android", "com.x.android"),
+        "x" to listOf("com.twitter.android", "com.x.android"),
+        "telegram" to listOf("org.telegram.messenger"),
+        "snapchat" to listOf("com.snapchat.android"),
+        "snap" to listOf("com.snapchat.android"),
+        "linkedin" to listOf("com.linkedin.android"),
+        "reddit" to listOf("com.reddit.frontpage"),
+        "netflix" to listOf("com.netflix.mediaclient"),
+        "prime" to listOf("com.amazon.avod.thirdpartyclient"),
+        "hotstar" to listOf("in.startv.hotstar"),
+        "gpay" to listOf("com.google.android.apps.nbu.paisa.user"),
+        "phonepe" to listOf("com.phonepe.app"),
+        "paytm" to listOf("net.one97.paytm"),
+        "zomato" to listOf("com.application.zomato"),
+        "swiggy" to listOf("in.swiggy.android"),
+        "uber" to listOf("com.ubercab"),
+        "ola" to listOf("com.olacabs.customer"),
+        "irctc" to listOf("cris.org.in.prs.ima"),
+        "discord" to listOf("com.discord"),
+        "pinterest" to listOf("com.pinterest"),
         "google" to listOf("com.google.android.googlequicksearchbox"),
         "chrome" to listOf("com.android.chrome"),
         "browser" to listOf("com.android.chrome"),
@@ -105,7 +131,18 @@ object DeviceActions {
     /** Map a spoken Devanagari app name to its latin alias key, if known. */
     fun normalizeAppName(name: String): String {
         if (name.none { it in '\u0900'..'\u097F' }) return name
-        return devanagariAliases.firstOrNull { name.contains(it.first) }?.second ?: name
+        // Exact contained key first.
+        devanagariAliases.firstOrNull { name.contains(it.first) }?.let { return it.second }
+        // Speech-to-text often drops a matra (यूट्ब, यूटूब): accept a shared
+        // prefix of 3+ chars with any known key, longest prefix wins.
+        var best: Pair<String, Int>? = null
+        for ((key, alias) in devanagariAliases) {
+            val n = minOf(name.length, key.length)
+            var common = 0
+            while (common < n && name[common] == key[common]) common++
+            if (common >= 3 && (best == null || common > best!!.second)) best = alias to common
+        }
+        return best?.first ?: name
     }
 
     fun openApp(context: Context, nameRaw: String): ActionResult {
@@ -117,9 +154,12 @@ object DeviceActions {
         // Fallback: fuzzy search installed launchable apps
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val apps = pm.queryIntentActivities(intent, 0)
+        val nameNoSpace = name.replace(" ", "")
         val match = apps.firstOrNull { resolve ->
             val label = resolve.loadLabel(pm).toString().lowercase()
-            label.contains(name) || name.contains(label)
+            val labelNoSpace = label.replace(" ", "")
+            label.contains(name) || name.contains(label) ||
+                (nameNoSpace.length >= 2 && labelNoSpace.contains(nameNoSpace))
         }
         if (match != null) {
             val pkg = match.activityInfo.packageName
@@ -133,6 +173,17 @@ object DeviceActions {
         return ActionResult(false, "\"$nameRaw\" naam ka app is phone par nahi mila. Naam saaf bolke dobara try karo.")
     }
 
+
+    /** Diagnostic: how many launchable apps are visible (Android 11+ package visibility check). */
+    fun visibleAppsReport(context: Context): String {
+        val pm = context.packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = pm.queryIntentActivities(intent, 0)
+        val yt = pm.getLaunchIntentForPackage("com.google.android.youtube") != null
+        val wa = pm.getLaunchIntentForPackage("com.whatsapp") != null
+        return "Mujhe ${apps.size} launchable apps dikh rahe hain. YouTube package ${if (yt) "dikh raha hai" else "NAHI dikh raha"}, WhatsApp ${if (wa) "dikh raha hai" else "NAHI dikh raha"}." +
+            if (apps.size < 5) " Bahut kam apps dikhna matlab package visibility ka issue hai - phone restart karke dobara try karo." else ""
+    }
 
     // --- WhatsApp draft send: opens the chat with the message prefilled; the user taps send. ---
     fun whatsappMessage(context: Context, number: String, body: String): ActionResult {

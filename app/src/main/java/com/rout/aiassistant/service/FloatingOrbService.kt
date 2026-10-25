@@ -95,7 +95,10 @@ class FloatingOrbService : Service() {
         val base = Prefs.DEFAULT_BACKEND_URL
         router = CommandRouter(
             context = this, db = db, prefs = prefs,
-            providerManager = { ProviderManager(base, prefs.devApiKey, false, en) },
+            providerManager = {
+                val pid = kotlinx.coroutines.runBlocking { prefs.personaMode.first() }
+                ProviderManager(base, prefs.devApiKey, false, en, pid)
+            },
             history = { emptyList() },
             requestConfirmation = { req -> pendingConfirm = req }
         )

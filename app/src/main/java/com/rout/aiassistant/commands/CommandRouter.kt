@@ -183,6 +183,11 @@ class CommandRouter(
         val permNotified = object { var done = false }
         fun needPerm() { if (!permNotified.done) { permNotified.done = true; onPermissionNeeded(raw) } }
 
+        // --- Diagnostic: package visibility check ---
+        if (Regex("(?:kitne\\s*apps?|how\\s*many\\s*apps?).*(?:dikh|visible|dekh)|apps?\\s*(?:dikhte|visible)\\s*(?:hain|hai)?").containsMatchIn(t)) {
+            return true to DeviceActions.visibleAppsReport(context)
+        }
+
         // --- App launching by trailing verb: "youtube kholo", "whatsapp khol do", "translate chalao" ---
         // Checked before every search rule so a named app opens instead of being searched.
         val openTarget = extractOpenTarget(t)

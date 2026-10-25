@@ -119,6 +119,9 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                         state == AssistantState.ERROR -> "Error"
                         else -> "Ready"
                     }
+                    val persona by vm.personaMode.collectAsState()
+                    val personaLabel = com.rout.aiassistant.ai.Personas.byId(persona).label
+                    val pillFull = if (personaLabel.isNotBlank() && personaLabel != "Default") "$pillText - $personaLabel" else pillText
                     val dotColor = when {
                         !online -> RoutError
                         state == AssistantState.ERROR -> RoutError
@@ -132,7 +135,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                         ) {
                             Box(Modifier.size(7.dp).background(dotColor, RoundedCornerShape(50)))
                             Spacer(Modifier.width(6.dp))
-                            Text(pillText, color = RoutIce, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            Text(pillFull, color = RoutIce, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                         }
                     }
                     Spacer(Modifier.width(8.dp))

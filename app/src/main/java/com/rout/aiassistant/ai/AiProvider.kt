@@ -45,7 +45,7 @@ private fun post(url: String, body: JSONObject, headers: Map<String, String>, ti
  * Secure default: ROUT backend proxy. The AI key lives on the server only.
  * Deploy backend/ from the source tree; set the deployed URL in Settings.
  */
-class BackendProxyProvider(private val baseUrl: String, private val deviceToken: String) : AiProvider {
+class BackendProxyProvider(private val baseUrl: String, private val deviceToken: String, private val personaId: String = "") : AiProvider {
     override val name = "ROUT backend"
     override suspend fun chat(history: List<ChatTurn>, userText: String): AiResult = withContext(Dispatchers.IO) {
         fun attempt(): AiResult = try {
@@ -54,6 +54,7 @@ class BackendProxyProvider(private val baseUrl: String, private val deviceToken:
                 msgs.put(JSONObject().put("role", if (t.role == "user") "user" else "assistant").put("text", t.text))
             }
             val body = JSONObject().put("messages", msgs).put("input", userText)
+            if (personaId.isNotBlank()) body.put("persona", personaId)
             val (code, text) = post(baseUrl.trimEnd('/') + "/v1/chat", body,
                 mapOf("Authorization" to "Bearer $deviceToken"))
             if (code in 200..299) {
@@ -77,8 +78,10 @@ class BackendProxyProvider(private val baseUrl: String, private val deviceToken:
  * shipped inside the app or committed to the repository.
  * Model: verified against Google AI docs at build time; see README.
  */
-class GeminiDirectProvider(private val apiKey: String) : AiProvider {
+class GeminiDirectProvider(private val apiKey: String, private val personaId: String = "") : AiProvider {
     override val name = "Gemini (developer key)"
+    private fun personaSuffix(): String =
+        Personas.byId(personaId).style.let { if (it.isBlank()) "" else " Current persona style: " + it }
     override suspend fun chat(history: List<ChatTurn>, userText: String): AiResult = withContext(Dispatchers.IO) {
         try {
             val contents = JSONArray()
@@ -95,7 +98,8 @@ class GeminiDirectProvider(private val apiKey: String) : AiProvider {
                     "installed app by name and place phone calls after on-screen confirmation. The user speaks Hindi, " +
                     "Hinglish and English. Reply in the same language the user used. Keep answers short and spoken-friendly. " +
                     "Never say you cannot open apps or make calls - if asked, tell the user ROUT can do it directly, " +
-                    "e.g. just say \"YouTube kholo\" or \"Rahul ko call karo\"."))))
+                    "e.g. just say \"YouTube kholo\" or \"Rahul ko call karo\"." +
+                    personaSuffix()))))
             val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
                 "gemini-3.6-flash:generateContent"
             val (code, text) = post(url, body, mapOf("x-goog-api-key" to apiKey))
@@ -121,7 +125,8 @@ class ProviderManager(
     private val backendUrl: String,
     private val devKey: String,
     private val devEnabled: Boolean,
-    private val enrollment: Enrollment?
+    private val enrollment: Enrollment?,
+    private val personaId: String = ""
 ) {
     fun mode(): AiMode = when {
         backendUrl.isNotBlank() && enrollment != null && enrollment.isEnrolledFor(backendUrl) -> AiMode.BACKEND
@@ -131,8 +136,8 @@ class ProviderManager(
     }
 
     fun provider(): AiProvider? = when (mode()) {
-        AiMode.BACKEND -> BackendProxyProvider(backendUrl, enrollment!!.deviceToken)
-        AiMode.DEV_KEY -> GeminiDirectProvider(devKey)
+        AiMode.BACKEND -> BackendProxyProvider(backendUrl, enrollment!!.deviceToken, personaId)
+        AiMode.DEV_KEY -> GeminiDirectProvider(devKey, personaId)
         else -> null
     }
 

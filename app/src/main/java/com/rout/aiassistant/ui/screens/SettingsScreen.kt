@@ -180,6 +180,25 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 }
             }
 
+            Section("ROUT persona") {
+                val currentPersona by vm.personaMode.collectAsState()
+                Text(
+                    "Mode badalta hai ROUT KAISE bolti hai aur kaunsi voice use karti hai - kya kar sakti hai wo nahi badalta. " +
+                    "Pet names (babu/sona) sirf Sweetheart mein; Professional kabhi nahi.",
+                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
+                )
+                FlowRow(Modifier.fillMaxWidth()) {
+                    com.rout.aiassistant.ai.Personas.ALL.forEach { pz ->
+                        FilterChip(
+                            selected = currentPersona == pz.id,
+                            onClick = { vm.setPersona(pz.id) },
+                            label = { Text(pz.label) },
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
+                    }
+                }
+            }
+
             Section("Routines") {
                 val routineList by vm.routines.collectAsState()
                 Text(
