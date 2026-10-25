@@ -5,6 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 
 class RoutApplication : Application() {
+    companion object {
+        @Volatile var foreground: Boolean = false
+    }
+
     override fun onCreate() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)

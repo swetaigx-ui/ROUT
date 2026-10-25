@@ -213,6 +213,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 router.consumePreAction()?.let { engine.speak(it) }
                 engine.speak(reply.take(400))
             }
+            // #21: while ROUT is in the background, the reply also lands as a
+            // notification with an inline voice/text reply action.
+            if (!RoutApplication.foreground) {
+                try { com.rout.aiassistant.service.RoutNotify.postReply(getApplication(), reply) } catch (_: Exception) {}
+            }
         }
     }
 

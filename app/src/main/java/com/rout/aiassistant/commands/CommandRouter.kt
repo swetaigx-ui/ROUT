@@ -759,6 +759,44 @@ class CommandRouter(
             db.tasks().insert(TaskItem(title = it.groupValues[1]))
             return true to "Task added."
         }
+        // --- Location reminders (geofencing) ---
+        if (Regex("(?:location|jagah)\\s*reminders?\\s*(?:dikhao|list|batao|show)").containsMatchIn(t)) {
+            val all = com.rout.aiassistant.service.GeofenceStore.list(context)
+            return if (all.isEmpty()) true to "Koi location reminder set nahi hai."
+            else true to "Location reminders: " + all.joinToString("; ") { it.task + " (" + it.place + (if (it.onExit) " se nikalte" else " pahunchte") + ")" }
+        }
+        Regex("(?:location\\s*reminder|jagah\\s*ka\\s*reminder)\\s*(?:hatao|delete|cancel)(?:\\s+(.+))?$").find(t)?.let { m ->
+            val q = m.groupValues.getOrNull(1)?.trim()?.lowercase()
+            val all = com.rout.aiassistant.service.GeofenceStore.list(context)
+            val match = if (q.isNullOrBlank()) all.lastOrNull() else all.firstOrNull { it.place.lowercase().contains(q) || it.task.lowercase().contains(q) }
+            return if (match != null) {
+                com.rout.aiassistant.service.GeofenceManager.cancel(context, match.id)
+                true to "Location reminder hata diya: " + match.task + " (" + match.place + ")."
+            } else true to "Matching location reminder nahi mila."
+        }
+        com.rout.aiassistant.service.GeoReminders.parse(t)?.let { req ->
+            if (!com.rout.aiassistant.service.GeofenceManager.hasFine(context)) {
+                needPerm()
+                return true to "Location reminder ke liye precise location permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
+            }
+            return when (val res = com.rout.aiassistant.service.GeofenceManager.add(context, req)) {
+                is com.rout.aiassistant.service.GeofenceManager.AddResult.Added -> {
+                    val how = if (req.onExit) " se nikalte hi" else " pahunchte hi"
+                    val bg = if (res.backgroundGranted) ""
+                        else " Dhyan rahe: band app mein trigger ke liye Settings > Apps > ROUT > Location > Allow all the time chahiye, warna ye sirf app khuli hone par kaam karega."
+                    true to "Location reminder set ho gaya: " + req.place + how + " main yaad dila dungi - " + req.task + "." + bg
+                }
+                is com.rout.aiassistant.service.GeofenceManager.AddResult.PlaceNotFound ->
+                    true to "\"" + res.place + "\" ka pata nahi chala. Landmark ke saath dobara bolo (jaise 'Phoenix Mall Pune'), ya wahan khade hokar 'yahan pahunchte hi' bolo. Geocoder ke liye phone mein Google Play services chahiye."
+                is com.rout.aiassistant.service.GeofenceManager.AddResult.Failed ->
+                    true to "Geofence set nahi ho paya (" + res.why + "). Play services update karke dobara try karo."
+                is com.rout.aiassistant.service.GeofenceManager.AddResult.NoFinePermission -> {
+                    needPerm()
+                    true to "Location reminder ke liye precise location permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
+                }
+            }
+        }
+
         Regex("(?:remind\\s*me|yaad\\s*dilao|yaad\\s*dilana)(?:\\s*to)?\\s+(.+?)\\s+(?:at|ko)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?$").find(t)?.let { m ->
             val title = m.groupValues[1]
             var hour = m.groupValues[2].toInt()

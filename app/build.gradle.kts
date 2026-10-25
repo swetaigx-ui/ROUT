@@ -13,8 +13,8 @@ android {
         applicationId = "com.rout.aiassistant"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "0.6.0"
+        versionCode = 20
+        versionName = "0.6.1"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -78,6 +78,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.5") // pulls fragment >= 1.3 for ActivityResult lint
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.77.0")

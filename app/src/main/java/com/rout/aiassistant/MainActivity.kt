@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        RoutApplication.foreground = true
         registerReceiver(batteryReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
         sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.let {
             sensorManager.registerListener(accelListener, it, android.hardware.SensorManager.SENSOR_DELAY_NORMAL)
@@ -80,6 +81,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        RoutApplication.foreground = false
         try { unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
         sensorManager.unregisterListener(accelListener)
     }
@@ -104,6 +106,9 @@ class MainActivity : ComponentActivity() {
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.READ_SMS)
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
         if (needed.isNotEmpty()) permLauncher.launch(needed.toTypedArray())
         intent?.getStringExtra("run_command")?.takeIf { it.isNotBlank() }?.let { cmd ->
