@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 import com.rout.aiassistant.ai.AiMode
 import com.rout.aiassistant.ai.AiResult
 import com.rout.aiassistant.ai.ChatTurn
+import com.rout.aiassistant.ai.SharedImage
 import com.rout.aiassistant.ai.ProviderManager
 import com.rout.aiassistant.data.Prefs
 import com.rout.aiassistant.data.RoutDatabase
@@ -146,7 +147,10 @@ class CommandRouter(
     private val providerManager: () -> ProviderManager,
     private val history: () -> List<ChatTurn>,
     private val requestConfirmation: (ConfirmRequest) -> Unit,
-    private val onPermissionNeeded: (String) -> Unit = {}
+    private val onPermissionNeeded: (String) -> Unit = {},
+    /** Photos / PDF pages the user explicitly shared - attached to the AI fallback only. */
+    private val visionImages: () -> List<SharedImage> = { emptyList() },
+    private val onClearVision: () -> Unit = {}
 ) {
     // Pre-action ack ("YouTube khol rahi hoon") spoken BEFORE the action result.
     @Volatile private var preAction: String? = null
@@ -160,6 +164,13 @@ class CommandRouter(
     suspend fun handle(rawInput: String): String {
         val raw = rawInput.trim()
         if (raw.isEmpty()) return "Kuch sunai nahi diya. Please try again."
+        // Clear a shared photo/PDF context.
+        val vclear = raw.lowercase().trimEnd('.', '!')
+        if (vclear in setOf("photo hatao", "picture hatao", "image hatao", "photo bhool jao",
+                "document bhool jao", "pdf bhool jao", "pdf hatao", "document hatao", "context hatao")) {
+            onClearVision()
+            return "Theek hai, photo/document context hata diya."
+        }
         val steps = splitSteps(raw)
         if (steps.size > 1) {
             val results = steps.map { step -> singleStep(step) }
@@ -1008,7 +1019,7 @@ class CommandRouter(
                     val target = if (hasDeva) "English" else "Hindi"
                     "Translate the following into $target. Reply with ONLY the translation, no explanation.\n\n$raw"
                 }
-                when (val r = pm.provider()!!.chat(history(), effectiveRaw)) {
+                when (val r = pm.provider()!!.chat(history(), effectiveRaw, visionImages())) {
                     is AiResult.Reply -> true to r.text
                     is AiResult.SetupRequired -> false to r.message
                     is AiResult.Failure -> false to friendlyFailure(r.reason)

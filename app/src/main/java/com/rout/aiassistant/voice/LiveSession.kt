@@ -48,8 +48,13 @@ class LiveSession {
         .build()
 
     companion object {
-        fun wsUrl(backendUrl: String): String =
-            backendUrl.trimEnd('/').replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/v1/live"
+        fun wsUrl(backendUrl: String, persona: String = "", voice: String = ""): String {
+            val base = backendUrl.trimEnd('/').replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/v1/live"
+            val q = StringBuilder()
+            if (persona.isNotBlank()) q.append("?persona=").append(java.net.URLEncoder.encode(persona, "UTF-8"))
+            if (voice.isNotBlank()) q.append(if (q.isEmpty()) "?" else "&").append("voice=").append(java.net.URLEncoder.encode(voice, "UTF-8"))
+            return base + q
+        }
         fun audioMessage(pcm: ByteArray, len: Int): String =
             JSONObject().put("realtimeInput", JSONObject().put("audio", JSONObject()
                 .put("mimeType", "audio/pcm;rate=16000")
@@ -57,14 +62,14 @@ class LiveSession {
     }
 
     @SuppressLint("MissingPermission")
-    fun start(backendUrl: String, deviceToken: String) {
+    fun start(backendUrl: String, deviceToken: String, persona: String = "", voice: String = "") {
         if (!closed) return
         if (backendUrl.isBlank() || deviceToken.isBlank()) {
             _state.value = "failed"; _error.value = "Live needs an enrolled device."; return
         }
         closed = false; ready = false; running = true
         _state.value = "connecting"; _error.value = null; _transcript.value = ""
-        val req = Request.Builder().url(wsUrl(backendUrl))
+        val req = Request.Builder().url(wsUrl(backendUrl, persona, voice))
             .header("Sec-WebSocket-Protocol", "rout-live, bearer.$deviceToken").build()
         ws = client.newWebSocket(req, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) { handle(text) }

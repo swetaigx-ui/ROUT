@@ -12,6 +12,9 @@ import java.net.URL
 
 data class ChatTurn(val role: String, val text: String)
 
+/** A photo or PDF page the user intentionally shared with ROUT (never silent gallery scanning). */
+data class SharedImage(val base64: String, val mimeType: String)
+
 sealed class AiResult {
     data class Reply(val text: String, val provider: String) : AiResult()
     /** AI is not configured yet. The app must show an honest setup-required state. */
@@ -21,7 +24,7 @@ sealed class AiResult {
 
 interface AiProvider {
     val name: String
-    suspend fun chat(history: List<ChatTurn>, userText: String): AiResult
+    suspend fun chat(history: List<ChatTurn>, userText: String, images: List<SharedImage> = emptyList()): AiResult
 }
 
 private fun post(url: String, body: JSONObject, headers: Map<String, String>, timeoutMs: Int = 20000): Pair<Int, String> {
@@ -47,7 +50,7 @@ private fun post(url: String, body: JSONObject, headers: Map<String, String>, ti
  */
 class BackendProxyProvider(private val baseUrl: String, private val deviceToken: String, private val personaId: String = "") : AiProvider {
     override val name = "ROUT backend"
-    override suspend fun chat(history: List<ChatTurn>, userText: String): AiResult = withContext(Dispatchers.IO) {
+    override suspend fun chat(history: List<ChatTurn>, userText: String, images: List<SharedImage>): AiResult = withContext(Dispatchers.IO) {
         fun attempt(): AiResult = try {
             val msgs = JSONArray()
             history.takeLast(20).forEach { t ->
@@ -55,6 +58,11 @@ class BackendProxyProvider(private val baseUrl: String, private val deviceToken:
             }
             val body = JSONObject().put("messages", msgs).put("input", userText)
             if (personaId.isNotBlank()) body.put("persona", personaId)
+            if (images.isNotEmpty()) {
+                val arr = JSONArray()
+                images.take(6).forEach { arr.put(JSONObject().put("data", it.base64).put("mimeType", it.mimeType)) }
+                body.put("images", arr)
+            }
             val (code, text) = post(baseUrl.trimEnd('/') + "/v1/chat", body,
                 mapOf("Authorization" to "Bearer $deviceToken"))
             if (code in 200..299) {
@@ -82,7 +90,7 @@ class GeminiDirectProvider(private val apiKey: String, private val personaId: St
     override val name = "Gemini (developer key)"
     private fun personaSuffix(): String =
         Personas.byId(personaId).style.let { if (it.isBlank()) "" else " Current persona style: " + it }
-    override suspend fun chat(history: List<ChatTurn>, userText: String): AiResult = withContext(Dispatchers.IO) {
+    override suspend fun chat(history: List<ChatTurn>, userText: String, images: List<SharedImage>): AiResult = withContext(Dispatchers.IO) {
         try {
             val contents = JSONArray()
             history.takeLast(10).forEach { t ->
@@ -90,8 +98,13 @@ class GeminiDirectProvider(private val apiKey: String, private val personaId: St
                     .put("role", if (t.role == "user") "user" else "model")
                     .put("parts", JSONArray().put(JSONObject().put("text", t.text))))
             }
-            contents.put(JSONObject().put("role", "user")
-                .put("parts", JSONArray().put(JSONObject().put("text", userText))))
+            val userParts = JSONArray()
+            images.take(6).forEach { img ->
+                userParts.put(JSONObject().put("inlineData", JSONObject()
+                    .put("mimeType", img.mimeType).put("data", img.base64)))
+            }
+            userParts.put(JSONObject().put("text", userText))
+            contents.put(JSONObject().put("role", "user").put("parts", userParts))
             val body = JSONObject().put("contents", contents)
                 .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text",
                     "You are ROUT, a concise personal assistant inside an Android app that can itself open any " +

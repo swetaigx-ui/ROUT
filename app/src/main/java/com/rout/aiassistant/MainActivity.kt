@@ -119,6 +119,7 @@ class MainActivity : ComponentActivity() {
             // Quick Settings tile: straight into listening.
             window.decorView.post { vm.onMicTap() }
         }
+        handleShareIntent(intent)
         setContent {
             RoutTheme {
                 val nav = rememberNavController()
@@ -151,6 +152,16 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra("tile_voice", false)) {
             window.decorView.post { vm.onMicTap() }
         }
+        handleShareIntent(intent)
+    }
+
+    /** Explicit share of a photo or PDF into ROUT (share sheet -> "ROUT"). */
+    private fun handleShareIntent(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val uri: android.net.Uri? = if (android.os.Build.VERSION.SDK_INT >= 33)
+            intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+        else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        if (uri != null) window.decorView.post { vm.handleShared(uri, intent.type) }
     }
 
     override fun onStop() {

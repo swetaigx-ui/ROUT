@@ -10,6 +10,8 @@ import com.rout.aiassistant.ai.Enrollment
 import com.rout.aiassistant.ai.ProviderManager
 import com.rout.aiassistant.commands.CommandRouter
 import com.rout.aiassistant.commands.ConfirmRequest
+import com.rout.aiassistant.commands.VisionDoc
+import com.rout.aiassistant.commands.VisionShare
 import com.rout.aiassistant.data.*
 import com.rout.aiassistant.service.FloatingOrbService
 import com.rout.aiassistant.service.ListeningService
@@ -107,13 +109,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleLive() {
         if (live.state.value == "live" || live.state.value == "connecting") { live.stop(); return }
         engine.stopSpeaking(); engine.stopListening()
-        live.start(backendUrl.value, enrollment.deviceToken ?: "")
+        viewModelScope.launch {
+            live.start(backendUrl.value, enrollment.deviceToken ?: "", personaMode.value, prefs.voiceName.first())
+        }
     }
 
     val recognitionAvailable get() = engine.recognitionAvailable
     val onDeviceRecognitionAvailable get() = engine.onDeviceRecognitionAvailable
 
     private lateinit var router: CommandRouter
+
+    /** Photo/PDF the user explicitly shared; attached to AI answers until cleared or replaced. */
+    @Volatile var visionDoc: VisionDoc? = null
+        private set
 
     init {
         viewModelScope.launch {
@@ -144,7 +152,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _confirm.value = req
                 engine.setState(AssistantState.WAITING_CONFIRMATION)
             },
-            onPermissionNeeded = { cmd -> pendingAfterPermission = cmd }
+            onPermissionNeeded = { cmd -> pendingAfterPermission = cmd },
+            visionImages = { visionDoc?.images ?: emptyList() },
+            onClearVision = { visionDoc = null }
         )
         engine.initTts()
         viewModelScope.launch {
@@ -224,7 +234,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val reply = try { router.handle(text) } catch (e: Exception) {
                 "Something went wrong while handling that: ${e.javaClass.simpleName}"
             }
-            db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = reply))
+            // PDF answers always disclose how many pages were actually processed (never imply full coverage).
+            val docNow = visionDoc
+            val finalReply = if (docNow != null && docNow.kind == "pdf") docNow.disclosure() + " " + reply else reply
+            db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = finalReply))
             if (assistantState.value != AssistantState.WAITING_CONFIRMATION) {
                 // Bug 1+2: every action says what it is doing first, then the result - voice or typed.
                 router.consumePreAction()?.let { engine.speak(it) }
@@ -350,4 +363,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setBanner(text: String?) { _banner.value = text }
 
     override fun onCleared() { live.stop(); engine.destroy() }
+    /** Entry point for an explicit photo/PDF share into ROUT (system share sheet). */
+    fun handleShared(uri: android.net.Uri, mimeType: String?) {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val cid = conversationId.value
+            val mime = (mimeType ?: "").lowercase()
+            when {
+                mime.startsWith("image/") -> {
+                    val img = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        VisionShare.loadSharedImage(app, uri)
+                    }
+                    if (img == null) { shareError("Ye photo nahi khul paayi."); return@launch }
+                    visionDoc = VisionDoc("photo", "photo", 1, 1, listOf(img))
+                    db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = "\uD83D\uDCF7 Photo share ki"))
+                    onUserText("Ye photo dekh kar batao isme kya dikh raha hai, thoda detail mein.", fromVoice = false)
+                }
+                mime == "application/pdf" -> {
+                    val doc = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        VisionShare.loadSharedPdf(app, uri, uri.lastPathSegment?.substringAfterLast('/'))
+                    }
+                    if (doc == null || doc.images.isEmpty()) { shareError("Ye PDF nahi khul paayi - ho sakta hai password-protected ho."); return@launch }
+                    visionDoc = doc
+                    db.conversations().insertMessage(Message(conversationId = cid, role = "user",
+                        text = "\uD83D\uDCC4 PDF: ${doc.label} (${doc.totalPages} pages)"))
+                    onUserText("Maine tumhe PDF '${doc.label}' ke pehle ${doc.shownPages} panne bheje hain (kul ${doc.totalPages} panne hain). " +
+                        "Pehle batao tum kitne panne dekh rahe ho, fir unka summary do.", fromVoice = false)
+                }
+                else -> shareError("Is type ki file abhi support nahi hai - photo ya PDF bhejo.")
+            }
+        }
+    }
+
+    private fun shareError(s: String) {
+        engine.speak(s)
+        viewModelScope.launch {
+            db.conversations().insertMessage(Message(conversationId = conversationId.value, role = "rout", text = s))
+        }
+    }
 }

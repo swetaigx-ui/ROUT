@@ -150,6 +150,16 @@ async function handleOauthCallback(request, url, env) {
 // ---- Live speech-to-speech: authenticated WebSocket relay to Gemini Live ----
 // The client may only send realtimeInput (mic audio / text). Model, voice, system
 // prompt and tools are fixed here, so a device token cannot reconfigure the session.
+const PERSONA_STYLES = {
+  sweetheart: 'Speak like a loving sweetheart: warm, affectionate, playful. You may use sweet pet names like babu or sona naturally. Keep it wholesome and short.',
+  professional: 'Speak like a polished professional assistant: crisp, formal, efficient. No slang, no pet names, no babu/sona - ever. Short and precise.',
+  waifu: 'Speak like a cheerful anime waifu: bubbly, playful, a little dramatic, cute expressions. Keep it wholesome and short.',
+  coach: 'Speak like an energetic fitness coach: motivating, upbeat, pushes the user to win their day. Short pep-talk energy.',
+  hacker: 'Speak like a terse hacker from a movie: tech slang, dry wit, efficient. Male voice persona. Keep answers short.',
+  therapist: 'Speak like a calm, empathetic therapist: listen first, validate feelings, gentle and unhurried. Never diagnose; suggest professional help for serious distress.',
+  dost: "Speak like the user's best friend: casual Hinglish banter, yaar-style warmth, zero formality. Short and fun.",
+  shayar: 'Speak like a poetic shayar: weave in a short sher or poetic touch when it fits, elegant Urdu-Hindi flavor. Keep it brief.'
+};
 const LIVE_SYSTEM = 'You are ROUT, a warm, soft-spoken personal voice assistant. The user speaks Hindi, Hinglish and English; reply in the language they used. Keep replies short and natural for speech. You cannot operate the phone from this voice session; if asked to do a phone action, say the user can ask ROUT by command.';
 const LIVE_MAX_MS = 10 * 60 * 1000;
 
@@ -164,6 +174,13 @@ async function handleLive(request, env) {
     return json({ error: 'rate_limited' }, 429);
   }
   const model = env.LIVE_MODEL || 'gemini-3.8-live';
+  // Persona + voice for the live session, whitelisted server-side via query params.
+  const liveUrl = new URL(request.url);
+  const livePersona = PERSONA_STYLES[liveUrl.searchParams.get('persona') || ''] || '';
+  const liveSystem = LIVE_SYSTEM + (livePersona ? ' Current persona style: ' + livePersona : '');
+  const LIVE_VOICES = ['Achernar','Aoede','Despina','Sulafat','Zephyr','Achird','Algieba','Charon','Umbriel','Sadaltager'];
+  const reqVoice = liveUrl.searchParams.get('voice') || '';
+  const liveVoice = LIVE_VOICES.includes(reqVoice) ? reqVoice : (env.TTS_VOICE || 'Achernar');
   const up = await fetch(
     'https://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=' + encodeURIComponent(env.GEMINI_API_KEY),
     { headers: { Upgrade: 'websocket' } });
@@ -176,8 +193,8 @@ async function handleLive(request, env) {
   upstream.send(JSON.stringify({ setup: {
     model: 'models/' + model,
     generationConfig: { responseModalities: ['AUDIO'],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: env.TTS_VOICE || 'Achernar' } } } },
-    systemInstruction: { parts: [{ text: LIVE_SYSTEM }] },
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: liveVoice } } } },
+    systemInstruction: { parts: [{ text: liveSystem }] },
     inputAudioTranscription: {}, outputAudioTranscription: {}
   } }));
   const closeBoth = (code, reason) => {
@@ -359,24 +376,23 @@ async function handleChat(request, env, token) {
     return json({ error: 'invalid_request' }, 400);
   }
   const input = body.input.slice(0, 4000);
-  const PERSONAS = {
-    sweetheart: 'Speak like a loving sweetheart: warm, affectionate, playful. You may use sweet pet names like babu or sona naturally. Keep it wholesome and short.',
-    professional: 'Speak like a polished professional assistant: crisp, formal, efficient. No slang, no pet names, no babu/sona - ever. Short and precise.',
-    waifu: 'Speak like a cheerful anime waifu: bubbly, playful, a little dramatic, cute expressions. Keep it wholesome and short.',
-    coach: 'Speak like an energetic fitness coach: motivating, upbeat, pushes the user to win their day. Short pep-talk energy.',
-    hacker: 'Speak like a terse hacker from a movie: tech slang, dry wit, efficient. Male voice persona. Keep answers short.',
-    therapist: 'Speak like a calm, empathetic therapist: listen first, validate feelings, gentle and unhurried. Never diagnose; suggest professional help for serious distress.',
-    dost: 'Speak like the user\'s best friend: casual Hinglish banter, yaar-style warmth, zero formality. Short and fun.',
-    shayar: 'Speak like a poetic shayar: weave in a short sher or poetic touch when it fits, elegant Urdu-Hindi flavor. Keep it brief.'
-  };
-  const personaStyle = PERSONAS[String(body.persona || '')] || '';
+  const personaStyle = PERSONA_STYLES[String(body.persona || '')] || '';
+  // Optional images (photo Q&A / PDF pages): whitelisted shape, capped count and size.
+  const images = Array.isArray(body.images) ? body.images.slice(0, 6) : [];
+  const imageParts = [];
+  for (const im of images) {
+    if (!im || typeof im.data !== 'string' || typeof im.mimeType !== 'string') continue;
+    if (!/^image\/(jpeg|jpg|png|webp)$/i.test(im.mimeType)) continue;
+    if (im.data.length > 2800000) continue; // ~2MB base64 cap per image
+    imageParts.push({ inlineData: { mimeType: im.mimeType, data: im.data } });
+  }
   const history = Array.isArray(body.messages) ? body.messages.slice(-20) : [];
   const contents = [];
   for (const m of history) {
     if (!m || typeof m.text !== 'string') continue;
     contents.push({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: String(m.text).slice(0, 2000) }] });
   }
-  contents.push({ role: 'user', parts: [{ text: input }] });
+  contents.push({ role: 'user', parts: [...imageParts, { text: input }] });
 
   const model = env.GEMINI_MODEL || 'gemini-3.6-flash';
   const upstream = await fetch(
