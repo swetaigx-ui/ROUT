@@ -37,6 +37,10 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.CALL_PHONE)
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.WRITE_CALENDAR)
+            needed.add(Manifest.permission.READ_CALENDAR)
+        }
         if (needed.isNotEmpty()) requestPermissions(needed.toTypedArray(), 42)
         setContent {
             RoutTheme {

@@ -13,6 +13,7 @@ import com.rout.aiassistant.data.Prefs
 import com.rout.aiassistant.data.RoutDatabase
 import com.rout.aiassistant.data.TaskItem
 import com.rout.aiassistant.data.Note
+import com.rout.aiassistant.data.Routine
 import com.rout.aiassistant.data.MemoryFact
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
@@ -53,6 +54,53 @@ internal fun extractOpenTarget(text: String): String? {
         }
     }
     return null
+}
+
+
+/** Pure: extract (contact name, message) from a WhatsApp-send phrasing, any language mix. */
+internal fun parseWhatsapp(text: String): Pair<String, String>? {
+    val t = text.trim()
+    val wa = "(?:whats?app|\u0935\u094d\u0939\u093e\u091f\u094d\u0938\u090f\u092a|\u0935\u094d\u0939\u093e\u091f\u094d\u0938\u0910\u092a)"
+    val a = Regex("^(.+?)\\s+(?:ko|\u0915\u094b)\\s+$wa(?:\\s+(?:par|pe|par message|\u092a\u0930|\u092a\u0947))?\\s+(?:karo|kar do|message karo|bhejo|bhej do|likho|likh do|message|\u0915\u0930\u094b|\u0915\u0930 \u0926\u094b|\u092d\u0947\u091c\u094b|\u0932\u093f\u0916\u094b)\\s*:?\\s*(?:ki|that|saying|ki bolo|\u0915\u093f)?\\s*(.+)$").find(t)
+    if (a != null) return a.groupValues[1].trim() to a.groupValues[2].trim()
+    val b = Regex("^$wa\\s+(?:message\\s+|msg\\s+)?(.+?)\\s+(?:ko\\s+)?(?:ki|that|saying)\\s+(.+)$").find(t)
+    if (b != null) return b.groupValues[1].trim() to b.groupValues[2].trim()
+    return null
+}
+
+/** Pure: extract (title, startMillis, endMillis) from a calendar phrasing, or null. */
+internal fun parseCalendar(text: String, now: java.util.Calendar = java.util.Calendar.getInstance()): Triple<String, Long, Long>? {
+    val t = text.trim().lowercase()
+    val dayOffset = when {
+        Regex("\\b(aaj|today)\\b").containsMatchIn(t) -> 0
+        Regex("\\b(kal|tomorrow)\\b").containsMatchIn(t) -> 1
+        Regex("\\b(parso)\\b").containsMatchIn(t) -> 2
+        else -> return null
+    }
+    val timeM = Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|baje)").find(t) ?: return null
+    var hour = timeM.groupValues[1].toInt()
+    val minute = timeM.groupValues[2].ifEmpty { "0" }.toInt()
+    if (hour > 24 || minute > 59) return null
+    val marker = timeM.groupValues[3]
+    val pm = marker == "pm" || (marker == "baje" && Regex("\\b(shaam|sham|dopahar|raat|rat)\\b").containsMatchIn(t))
+    val am = marker == "am" || (marker == "baje" && Regex("\\b(subah|saverey)\\b").containsMatchIn(t))
+    if (pm && hour < 12) hour += 12
+    if (am && hour == 12) hour = 0
+    if (marker == "baje" && !pm && !am && hour < 7) hour += 12 // "4 baje" without context usually means evening
+    val cue = Regex("(calendar|event|meeting|appointment|schedule|rakh do|banao|add karo|fix karo|set karo|yaad dilao)").containsMatchIn(t)
+    if (!cue) return null
+    var title = t
+    listOf("calendar mein", "calendar", "event", "appointment", "schedule karo", "schedule", "rakh do", "add karo", "fix karo", "set karo", "banao",
+        "aaj", "today", "kal", "tomorrow", "parso", "subah", "shaam", "sham", "dopahar", "raat", "rat", "saverey", "baje", "ko ", "ka ", "ki ", "ke ", "mein ", "please", " meeting").forEach { w -> title = title.replace(w, " ") }
+    title = title.replace(timeM.value, " ").replace(Regex("\\s+"), " ").trim()
+    if (title.isEmpty()) title = if (t.contains("meeting")) "Meeting" else "Event"
+    val start = (now.clone() as java.util.Calendar).apply {
+        add(java.util.Calendar.DAY_OF_YEAR, dayOffset)
+        set(java.util.Calendar.HOUR_OF_DAY, hour); set(java.util.Calendar.MINUTE, minute)
+        set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+    }
+    val end = (start.clone() as java.util.Calendar).apply { add(java.util.Calendar.HOUR_OF_DAY, 1) }
+    return Triple(title.replaceFirstChar { it.uppercase() }, start.timeInMillis, end.timeInMillis)
 }
 
 data class ConfirmRequest(
@@ -111,6 +159,62 @@ class CommandRouter(
                 return w.ok to if (w.ok) w.message else r.message
             }
             return false to r.message
+        }
+
+        // --- Routines: user-defined trigger phrases that run a sequence of commands ---
+        if (!inRoutine) {
+            if (db.routines().count() == 0) seedDefaultRoutines()
+            val norm = t.replace(Regex("[!?.]+$"), "").trim()
+            db.routines().enabled().firstOrNull { it.trigger == norm }?.let { r -> return runRoutine(r) }
+        }
+        Regex("^routine banao\\s+(.+?)\\s*:\\s*(.+)$").find(t)?.let { m ->
+            val trigger = m.groupValues[1].trim()
+            val steps = m.groupValues[2].split(Regex("\\s*(?:,|\\s+aur\\s+)\\s*")).map { it.trim() }.filter { it.isNotEmpty() }
+            if (trigger.isEmpty() || steps.isEmpty()) return false to "Routine banane ke liye: \"routine banao <naam>: <step1>, <step2>\" bolo."
+            db.routines().deleteByTrigger(trigger)
+            db.routines().insert(Routine(trigger = trigger, steps = steps.joinToString("\n")))
+            return true to "Routine '$trigger' ban gaya. Jab bhi '$trigger' bologe, ye ${steps.size} steps chalenge: " + steps.joinToString(", ") + "."
+        }
+        Regex("^routine hatao\\s+(.+)$").find(t)?.let { m ->
+            db.routines().deleteByTrigger(m.groupValues[1].trim())
+            return true to "Routine '${m.groupValues[1].trim()}' hata diya."
+        }
+
+        // --- Do Not Disturb / ringer modes ---
+        if (Regex("^(?:dnd|do not disturb)(?:\\s+(?:on|off|on karo|off karo|lagao|hatao|kar do))?$").matches(t)) {
+            val on = !(t.contains("off") || t.contains("hatao"))
+            val r = DeviceActions.setDnd(context, on); return r.ok to r.message
+        }
+        if (Regex("^(?:silent mode|phone silent|silent karo)(?:\\s+(?:on|karo|kar do|lagao))?$").matches(t)) {
+            val r = DeviceActions.setRingerMode(context, "silent"); return r.ok to r.message
+        }
+        if (Regex("^(?:vibrate mode|vibration mode|phone vibrate)(?:\\s+(?:on|karo|kar do|lagao))?$").matches(t)) {
+            val r = DeviceActions.setRingerMode(context, "vibrate"); return r.ok to r.message
+        }
+        if (Regex("^(?:normal mode|ringer on|sound on|unmute phone)(?:\\s+(?:karo|kar do))?$").matches(t)) {
+            val r = DeviceActions.setRingerMode(context, "normal"); return r.ok to r.message
+        }
+
+        // --- WhatsApp draft-send: contact + message, show-then-confirm, chat opens prefilled ---
+        parseWhatsapp(t)?.let { (name, body) ->
+            if (!has(Manifest.permission.READ_CONTACTS)) {
+                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+            }
+            val contact = DeviceActions.findContact(context, name)
+                ?: return false to "\"$name\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
+            requestConfirmation(ConfirmRequest("whatsapp", "WhatsApp ${contact.first}: \"$body\"") {
+                DeviceActions.whatsappMessage(context, contact.second, body).message
+            })
+            return true to "${contact.first} ko WhatsApp: \"$body\" - screen par confirm karo ya 'haan' bolo."
+        }
+
+        // --- Calendar event by voice: day + time + title, show-then-confirm ---
+        parseCalendar(t)?.let { (title, start, end) ->
+            val when_ = java.text.SimpleDateFormat("EEE d MMM, h:mm a", java.util.Locale.getDefault()).format(java.util.Date(start))
+            requestConfirmation(ConfirmRequest("calendar", "Event: $title - $when_") {
+                DeviceActions.insertCalendarEvent(context, title, start, end).message
+            })
+            return true to "Event: $title - $when_. Save karoon? Screen par confirm karo ya 'haan' bolo."
         }
 
         // --- Help ---
@@ -356,6 +460,24 @@ class CommandRouter(
                 is AiResult.SetupRequired -> r.message
                 is AiResult.Failure -> friendlyFailure(r.reason)
             }
+        }
+    }
+
+    private var inRoutine = false
+
+    private suspend fun seedDefaultRoutines() {
+        db.routines().insert(Routine(trigger = "good morning", steps = "time\nweather\nbattery\nshow tasks"))
+        db.routines().insert(Routine(trigger = "good night", steps = "battery\ndnd on"))
+    }
+
+    private suspend fun runRoutine(r: Routine): Pair<Boolean, String> {
+        inRoutine = true
+        try {
+            val results = r.steps.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                .map { step -> singleStep(step).second }
+            return true to "Routine: ${r.trigger}. " + results.joinToString(" ")
+        } finally {
+            inRoutine = false
         }
     }
 

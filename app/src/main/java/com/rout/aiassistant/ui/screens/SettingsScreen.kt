@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,14 +20,18 @@ import com.rout.aiassistant.BuildConfig
 import com.rout.aiassistant.MainViewModel
 import com.rout.aiassistant.commands.MediaControl
 import com.rout.aiassistant.ui.theme.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean = false) {
+fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean = false, scrollFraction: Float = 0f) {
     val scrollState = rememberScrollState()
-    if (scrollToEnd) {
-        androidx.compose.runtime.LaunchedEffect(Unit) { scrollState.scrollTo(scrollState.maxValue) }
+    if (scrollToEnd || scrollFraction > 0f) {
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            androidx.compose.runtime.snapshotFlow { scrollState.maxValue }.first { it > 0 }
+            scrollState.scrollTo(if (scrollToEnd) scrollState.maxValue else (scrollState.maxValue * scrollFraction).toInt())
+        }
     }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -118,6 +123,47 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                         )
                     }
                 }
+            }
+
+            Section("Routines") {
+                val routineList by vm.routines.collectAsState()
+                Text(
+                    "One phrase runs many commands. Say the trigger (e.g. \"good morning\") and ROUT runs every step in order. " +
+                    "Add your own below - steps are the same commands you speak.",
+                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
+                )
+                routineList.forEach { r ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(r.trigger, color = RoutText, style = MaterialTheme.typography.titleMedium)
+                            Text(r.steps.replace("\n", "  ·  "), color = RoutDim, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        }
+                        Switch(checked = r.enabled, onCheckedChange = { vm.setRoutineEnabled(r.id, it) }, colors = switchColors())
+                        Text(
+                            "Delete", color = RoutDim, style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(start = 8.dp).clickable { vm.deleteRoutine(r.id) }
+                        )
+                    }
+                }
+                var newTrigger by remember { mutableStateOf("") }
+                var newSteps by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = newTrigger, onValueChange = { newTrigger = it },
+                    label = { Text("Trigger phrase (e.g. gym time)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = newSteps, onValueChange = { newSteps = it },
+                    label = { Text("Steps, one per line (e.g. weather)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(onClick = {
+                    val steps = newSteps.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                    if (newTrigger.isNotBlank() && steps.isNotEmpty()) {
+                        vm.addRoutine(newTrigger, steps)
+                        newTrigger = ""; newSteps = ""
+                    }
+                }) { Text("Add routine") }
             }
 
             Section("ROUT AI connection") {

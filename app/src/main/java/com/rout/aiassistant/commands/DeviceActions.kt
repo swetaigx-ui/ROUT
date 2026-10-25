@@ -14,7 +14,10 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.provider.AlarmClock
 import android.provider.ContactsContract
+import android.provider.CalendarContract
 import android.provider.Settings
+import android.app.NotificationManager
+import android.content.ContentValues
 import android.widget.Toast
 import com.rout.aiassistant.service.ReminderReceiver
 import java.text.SimpleDateFormat
@@ -128,6 +131,92 @@ object DeviceActions {
             }
         }
         return ActionResult(false, "\"$nameRaw\" naam ka app is phone par nahi mila. Naam saaf bolke dobara try karo.")
+    }
+
+
+    // --- WhatsApp draft send: opens the chat with the message prefilled; the user taps send. ---
+    fun whatsappMessage(context: Context, number: String, body: String): ActionResult {
+        val digits = number.filter { it.isDigit() }
+        val url = "https://wa.me/$digits?text=" + Uri.encode(body)
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage("com.whatsapp")
+        if (launch(context, intent)) return ActionResult(true, "WhatsApp khul gaya - message ready hai, bas send dabao.")
+        // WhatsApp not installed - fall back to the generic handler
+        val generic = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        return if (launch(context, generic)) ActionResult(true, "Chat khul gayi - message ready hai, bas send dabao.")
+        else ActionResult(false, "WhatsApp is phone par nahi mila.")
+    }
+
+    // --- Do Not Disturb (needs Notification Policy Access - a one-time special grant) ---
+    private fun hasPolicyAccess(context: Context): Boolean {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return nm.isNotificationPolicyAccessGranted
+    }
+
+    private fun openPolicyAccessSettings(context: Context) {
+        launch(context, Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+    }
+
+    fun setDnd(context: Context, on: Boolean): ActionResult {
+        if (!hasPolicyAccess(context)) {
+            openPolicyAccessSettings(context)
+            return ActionResult(false, "DND ke liye ek one-time permission chahiye. Settings kholi hai - list mein ROUT ko allow karo, fir dobara bolo.")
+        }
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.setInterruptionFilter(if (on) NotificationManager.INTERRUPTION_FILTER_NONE else NotificationManager.INTERRUPTION_FILTER_ALL)
+        return ActionResult(true, if (on) "Do Not Disturb on kar diya. Ab koi notification disturb nahi karega." else "Do Not Disturb off kar diya.")
+    }
+
+    fun setRingerMode(context: Context, mode: String): ActionResult {
+        if (!hasPolicyAccess(context)) {
+            openPolicyAccessSettings(context)
+            return ActionResult(false, "Silent/vibrate mode ke liye ek one-time permission chahiye. Settings kholi hai - ROUT ko allow karo, fir dobara bolo.")
+        }
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return try {
+            when (mode) {
+                "silent" -> { am.ringerMode = AudioManager.RINGER_MODE_SILENT; ActionResult(true, "Phone silent mode mein daal diya.") }
+                "vibrate" -> { am.ringerMode = AudioManager.RINGER_MODE_VIBRATE; ActionResult(true, "Phone vibrate mode mein daal diya.") }
+                else -> { am.ringerMode = AudioManager.RINGER_MODE_NORMAL; ActionResult(true, "Phone normal ringer mode mein aa gaya.") }
+            }
+        } catch (e: SecurityException) {
+            openPolicyAccessSettings(context)
+            ActionResult(false, "Ye change karne ke liye ROUT ko Do Not Disturb access chahiye - settings kholi hai, allow karke dobara bolo.")
+        }
+    }
+
+    // --- Calendar event: silent insert when permission granted, prefilled Calendar screen otherwise ---
+    fun insertCalendarEvent(context: Context, title: String, startMillis: Long, endMillis: Long): ActionResult {
+        val hasWrite = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
+        val hasRead = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+        if (hasWrite && hasRead) {
+            try {
+                var calId: Long = -1
+                context.contentResolver.query(
+                    CalendarContract.Calendars.CONTENT_URI,
+                    arrayOf(CalendarContract.Calendars._ID),
+                    CalendarContract.Calendars.VISIBLE + " = 1", null,
+                    CalendarContract.Calendars.IS_PRIMARY + " DESC"
+                )?.use { c -> if (c.moveToFirst()) calId = c.getLong(0) }
+                if (calId > 0) {
+                    val v = ContentValues().apply {
+                        put(CalendarContract.Events.CALENDAR_ID, calId)
+                        put(CalendarContract.Events.TITLE, title)
+                        put(CalendarContract.Events.DTSTART, startMillis)
+                        put(CalendarContract.Events.DTEND, endMillis)
+                        put(CalendarContract.Events.EVENT_TIMEZONE, java.util.TimeZone.getDefault().id)
+                    }
+                    context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, v)
+                    val when_ = SimpleDateFormat("EEE d MMM, h:mm a", Locale.getDefault()).format(Date(startMillis))
+                    return ActionResult(true, "Event save kar diya: $title - $when_.")
+                }
+            } catch (_: Exception) { /* fall through to prefilled intent */ }
+        }
+        val intent = Intent(Intent.ACTION_INSERT).setData(CalendarContract.Events.CONTENT_URI)
+            .putExtra(CalendarContract.Events.TITLE, title)
+            .putExtra(CalendarContract.Events.DTSTART, startMillis)
+            .putExtra(CalendarContract.Events.DTEND, endMillis)
+        return if (launch(context, intent)) ActionResult(true, "Calendar khul raha hai - event ready hai, bas Save dabao.")
+        else ActionResult(false, "Calendar app nahi mila is phone par.")
     }
 
     fun webSearch(context: Context, query: String): ActionResult {

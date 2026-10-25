@@ -95,3 +95,27 @@ interface MemoryDao {
     @Query("SELECT * FROM memory_facts ORDER BY savedAt DESC")
     suspend fun all(): List<MemoryFact>
 }
+
+@Dao
+interface RoutineDao {
+    @Query("SELECT * FROM routines WHERE enabled = 1")
+    suspend fun enabled(): List<Routine>
+
+    @Query("SELECT * FROM routines ORDER BY createdAt ASC")
+    fun routines(): Flow<List<Routine>>
+
+    @Insert
+    suspend fun insert(r: Routine): Long
+
+    @Query("UPDATE routines SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: Long, enabled: Boolean)
+
+    @Query("DELETE FROM routines WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("SELECT COUNT(*) FROM routines")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM routines WHERE trigger = :trigger")
+    suspend fun deleteByTrigger(trigger: String)
+}

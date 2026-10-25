@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import android.graphics.Bitmap
 import java.io.File
@@ -125,6 +126,37 @@ class ScreenshotTest {
         }
         composeRule.waitForIdle()
         savePng("home_screen_small.png", heightPx = 1500)
+    }
+
+    @Test
+    fun settingsScreenRoutines() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val vm = MainViewModel(app)
+        composeRule.setContent {
+            RoutTheme {
+                val nav = androidx.navigation.compose.rememberNavController()
+                com.rout.aiassistant.ui.screens.SettingsScreen(vm, nav, scrollFraction = 0.28f)
+            }
+        }
+        composeRule.waitForIdle()
+        savePng("settings_screen_routines.png")
+    }
+
+    @Test
+    fun settingsRoutinesSectionExists() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val vm = MainViewModel(app)
+        composeRule.setContent {
+            RoutTheme {
+                val nav = androidx.navigation.compose.rememberNavController()
+                com.rout.aiassistant.ui.screens.SettingsScreen(vm, nav)
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Routines", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Add routine", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Trigger phrase (e.g. gym time)", substring = true, useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Steps, one per line (e.g. weather)", substring = true, useUnmergedTree = true).assertExists()
     }
 
     @Test

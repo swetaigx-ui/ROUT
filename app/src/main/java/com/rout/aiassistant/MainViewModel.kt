@@ -33,6 +33,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val notes = db.notes().notes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList<Note>())
     val tasks = db.tasks().tasks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList<TaskItem>())
     val facts = db.memory().facts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList<MemoryFact>())
+    val routines = db.routines().routines().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList<Routine>())
+
+    fun addRoutine(trigger: String, steps: List<String>) {
+        viewModelScope.launch {
+            val tg = trigger.trim().lowercase()
+            if (tg.isNotEmpty() && steps.isNotEmpty()) {
+                db.routines().deleteByTrigger(tg)
+                db.routines().insert(Routine(trigger = tg, steps = steps.joinToString("\n")))
+            }
+        }
+    }
+    fun deleteRoutine(id: Long) { viewModelScope.launch { db.routines().delete(id) } }
+    fun setRoutineEnabled(id: Long, enabled: Boolean) { viewModelScope.launch { db.routines().setEnabled(id, enabled) } }
 
     val language = prefs.language.stateIn(viewModelScope, SharingStarted.Eagerly, "hi-IN")
     val speechRate = prefs.speechRate.stateIn(viewModelScope, SharingStarted.Eagerly, 1.0f)
