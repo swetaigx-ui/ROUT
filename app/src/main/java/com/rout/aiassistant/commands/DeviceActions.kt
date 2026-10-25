@@ -219,6 +219,48 @@ object DeviceActions {
         else ActionResult(false, "Calendar app nahi mila is phone par.")
     }
 
+
+    // --- One-tap system panels (Android does not allow any app to toggle these silently) ---
+    fun openSystemPanel(context: Context, kind: String): ActionResult {
+        val (action, label) = when (kind) {
+            "wifi" -> Pair(Settings.Panel.ACTION_WIFI, "WiFi")
+            "bluetooth" -> Pair(Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth")
+            "internet" -> Pair(Settings.Panel.ACTION_INTERNET_CONNECTIVITY, "Internet")
+            "batterysaver" -> Pair(Settings.ACTION_BATTERY_SAVER_SETTINGS, "Battery saver")
+            "display" -> Pair(Settings.ACTION_DISPLAY_SETTINGS, "Display")
+            "wireless" -> Pair(Settings.ACTION_WIRELESS_SETTINGS, "Hotspot")
+            else -> return ActionResult(false, "Ye settings panel nahi mila.")
+        }
+        return if (launch(context, Intent(action))) ActionResult(true, "$label settings khul gayi - ek tap mein badal lo.")
+        else ActionResult(false, "$label settings nahi khul payi.")
+    }
+
+    fun spotifyPlay(context: Context, query: String): ActionResult {
+        val uri = Uri.parse("spotify:search:" + Uri.encode(query))
+        val intent = Intent(Intent.ACTION_VIEW, uri).setPackage("com.spotify.music")
+        if (launch(context, intent)) return ActionResult(true, "Spotify mein '$query' dhoondh raha hoon - play dabao.")
+        return ActionResult(false, "Spotify is phone par installed nahi hai.")
+    }
+
+    fun openCamera(context: Context, selfie: Boolean): ActionResult {
+        val intent = Intent("android.media.action.IMAGE_CAPTURE")
+        if (selfie) {
+            intent.putExtra("android.intent.extras.CAMERA_FACING", 1)
+            intent.putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+        }
+        return if (launch(context, intent)) ActionResult(true, if (selfie) "Selfie camera khul gaya - smile!" else "Camera khul gaya - photo lo.")
+        else ActionResult(false, "Camera nahi khul paya.")
+    }
+
+
+    fun exactAlarmStatus(context: Context): ActionResult {
+        if (android.os.Build.VERSION.SDK_INT < 31) return ActionResult(true, "Is Android version par alarms hamesha exact hain.")
+        val am = context.getSystemService(AlarmManager::class.java)
+        if (am.canScheduleExactAlarms()) return ActionResult(true, "Exact alarms already on hain.")
+        launch(context, Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+        return ActionResult(false, "Exact alarms ke liye one-time permission chahiye. Settings kholi hai - ROUT ko allow karo. Uske baad har reminder bilkul sahi waqt pe aayega.")
+    }
+
     fun webSearch(context: Context, query: String): ActionResult {
         val intent = Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)
         if (launch(context, intent)) return ActionResult(true, "Searching Google for $query")
@@ -401,7 +443,11 @@ object DeviceActions {
             context, taskId.toInt(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        // Inexact alarm: delivered reliably but not at an exact wall-clock second.
-        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+        // Exact when the user granted SCHEDULE_EXACT_ALARM (Android 12+); inexact otherwise.
+        if (android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+        } else {
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+        }
     }
 }

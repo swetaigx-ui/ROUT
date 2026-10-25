@@ -217,9 +217,68 @@ class CommandRouter(
             return true to "Event: $title - $when_. Save karoon? Screen par confirm karo ya 'haan' bolo."
         }
 
+        // --- One-tap system panels (WiFi/Bluetooth/data/battery saver/display/hotspot) ---
+        when {
+            Regex("^(?:wifi|wi-fi)(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "wifi"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
+            }
+            Regex("^(?:bluetooth|bt)(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "bluetooth"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
+            }
+            Regex("^(?:mobile data|internet)(?:\\s+(?:on|off|karo|kar do))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "internet"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
+            }
+            Regex("^(?:battery saver|power saving)(?:\\s+(?:on|off|karo|kar do|lagao))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "batterysaver"); return r.ok to r.message
+            }
+            Regex("^(?:dark mode|dark theme)(?:\\s+(?:on|off|karo|kar do))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "display"); return r.ok to r.message + " Dark mode wahi display settings mein hai - ek tap."
+            }
+            Regex("^(?:hotspot)(?:\\s+(?:on|off|karo|kar do|chalu))?$").matches(t) -> {
+                val r = DeviceActions.openSystemPanel(context, "wireless"); return r.ok to r.message + " Hotspot wahi 'Hotspot & tethering' mein hai."
+            }
+        }
+
+        // --- Voice screenshot (accessibility service) ---
+        if (Regex("(screenshot|screen shot|स्क्रीनशॉट)").containsMatchIn(t) && Regex("(lo|le lo|karo|kar do|lena|le|capture)").containsMatchIn(t)) {
+            val svc = com.rout.aiassistant.service.RoutAccessibilityService.instance
+            if (svc == null) {
+                return false to "Screenshot ke liye ROUT ka screen control (accessibility) on karna hoga. Settings > Screen control se enable karo, fir dobara bolo."
+            }
+            if (svc.isSensitiveScreen()) {
+                return false to "Ye screen sensitive lag rahi hai (password/payment) - privacy ke liye screenshot nahi liya."
+            }
+            var ok = false
+            kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
+                svc.captureScreenshot { done -> ok = done; if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+            }
+            return ok to if (ok) "Screenshot le liya - gallery (Pictures/ROUT) mein save ho gaya." else "Screenshot nahi le paya. Ek baar aur try karo."
+        }
+
+        // --- Exact alarms permission ---
+        if (Regex("(exact alarm|exact reminder|sahi waqt)").containsMatchIn(t)) {
+            val r = DeviceActions.exactAlarmStatus(context); return r.ok to r.message
+        }
+
+        // --- Spotify ---
+        Regex("^spotify\\s+(?:par|pe|mein)\\s+(.+?)\\s+(?:chalao|bajao|sunao|play\\s*karo|play)$").find(t)?.let {
+            val r = DeviceActions.spotifyPlay(context, it.groupValues[1]); return r.ok to r.message
+        }
+        Regex("^spotify\\s+(?:play\\s+)?(.+?)\\s+(?:chalao|bajao|sunao)$").find(t)?.let {
+            val r = DeviceActions.spotifyPlay(context, it.groupValues[1]); return r.ok to r.message
+        }
+
+        // --- Camera / selfie ---
+        if (Regex("^(?:selfie|selfi)(?:\\s+(?:lo|le lo|karo|kholo))?$").matches(t)) {
+            val r = DeviceActions.openCamera(context, true); return r.ok to r.message
+        }
+        if (Regex("^(?:photo|picture|tasveer)(?:\\s+(?:lo|le lo|karo|khicho))?$").matches(t)) {
+            val r = DeviceActions.openCamera(context, false); return r.ok to r.message
+        }
+
         // --- Help ---
         if (t == "help" || t == "madad" || t.contains("what can you do") || t.contains("kya kar sakte")) {
-            return true to "Main ye sab kar sakta hoon: koi bhi app kholo - kisi bhi bhasha mein bolo (\"YouTube kholo\", \"\u092f\u0942\u091f\u094d\u092f\u0942\u092c \u0913\u092a\u0928 \u0915\u0930\u094b\"), kisi ko call karo (\"Rahul ko call karo\"), weather, time, alarm, timer, torch, notes, tasks, reminders, Google ya YouTube search, maps navigation - aur kuch bhi poochho, main AI se jawab dunga."
+            return true to "Main ye sab kar sakta hoon: koi bhi app kholo - kisi bhi bhasha mein bolo (\"YouTube kholo\", \"\u092f\u0942\u091f\u094d\u092f\u0942\u092c \u0913\u092a\u0928 \u0915\u0930\u094b\"), kisi ko call karo (\"Rahul ko call karo\"), weather, time, alarm, timer, torch, notes, tasks, reminders, Google/YouTube/Spotify search, maps navigation, WhatsApp message, calendar events, routines (\"good morning\"), DND/silent mode, WiFi/Bluetooth panels, screenshot - aur kuch bhi poochho, main AI se jawab dunga."
         }
 
         // --- App launching ---

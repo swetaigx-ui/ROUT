@@ -37,6 +37,39 @@ class RoutAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
+
+    /** Take a screenshot of the current screen (API 30+) and save it to Pictures/ROUT. */
+    fun captureScreenshot(onDone: (Boolean) -> Unit) {
+        if (android.os.Build.VERSION.SDK_INT < 30) { onDone(false); return }
+        takeScreenshot(android.view.Display.DEFAULT_DISPLAY,
+            mainExecutor, object : android.accessibilityservice.AccessibilityService.TakeScreenshotCallback {
+                override fun onSuccess(result: android.accessibilityservice.AccessibilityService.ScreenshotResult) {
+                    var ok = false
+                    try {
+                        val bmp = android.graphics.Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)
+                        result.hardwareBuffer.close()
+                        if (bmp != null) {
+                            val values = android.content.ContentValues().apply {
+                                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "ROUT_" + System.currentTimeMillis() + ".png")
+                                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
+                                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ROUT")
+                            }
+                            val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                            if (uri != null) {
+                                contentResolver.openOutputStream(uri)?.use { out ->
+                                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                }
+                                ok = true
+                            }
+                            bmp.recycle()
+                        }
+                    } catch (_: Exception) {}
+                    onDone(ok)
+                }
+                override fun onFailure(errorCode: Int) { onDone(false) }
+            })
+    }
+
     /** True when the foreground content looks sensitive. Fail closed. */
     fun isSensitiveScreen(): Boolean {
         val root = rootInActiveWindow ?: return false
