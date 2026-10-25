@@ -411,4 +411,38 @@ object QuickAnswers {
         val t = text.trim().lowercase()
         return Regex("emergency").containsMatchIn(t) && Regex("(call|phone|dial|lagao|karo)").containsMatchIn(t)
     }
+
+    /** "meri location X ko bhejo" / "send my location to X" -> contact name, or null. "meri location batao" -> "" (share self). */
+    fun parseSendLocation(text: String): String? {
+        val t = text.trim().lowercase()
+        Regex("(?:meri|my)\\s+location\\s+(.+?)\\s+ko\\s+(?:bhejo|bhej do|send\\s*karo|share\\s*karo)").find(t)?.let { return it.groupValues[1].trim() }
+        Regex("(?:send|share|bhejo)\\s+(?:my|meri)\\s+location\\s+(?:to\\s+)?(.+)$").find(t)?.let { return it.groupValues[1].trim() }
+        if (Regex("^(?:meri|my)\\s+location\\s+(?:batao|kya hai|bata do)$").matches(t)) return ""
+        return null
+    }
+
+    /** "5 minute ka chai timer" / "chai timer 5 minute" / "timer 5 minute chai" -> (label, seconds), or null. */
+    fun parseNamedTimer(text: String): Pair<String, Int>? {
+        val t = text.trim().lowercase()
+        if (!t.contains("timer")) return null
+        val timeM = Regex("(\\d+)\\s*(minutes?|mins?|seconds?|secs?|ghante?|hours?)") .find(t) ?: return null
+        val n = timeM.groupValues[1].toInt()
+        if (n <= 0) return null
+        val secs = when {
+            timeM.groupValues[2].startsWith("min") -> n * 60
+            timeM.groupValues[2].startsWith("sec") -> n
+            else -> n * 3600
+        }
+        var label = t.replace(timeM.value, " ")
+        listOf("timer", "lagao", "laga do", "set karo", "set", "karo", "ka", "ki", "ke", "mujhe", "ek", "a", "for", "chahiye").forEach { w -> label = label.replace(Regex("\\b$w\\b"), " ") }
+        label = label.replace(Regex("\\s+"), " ").trim()
+        if (label.isEmpty()) return null
+        return label to secs
+    }
+
+    /** Song recognition cue: "ye gaana kaunsa hai" / "what song is this". */
+    fun isSongIdQ(text: String): Boolean {
+        val t = text.trim().lowercase()
+        return (Regex("(gaana|song|gana)").containsMatchIn(t) && Regex("(kaunsa|kaun sa|which|what|pehchan|baj raha)").containsMatchIn(t))
+    }
 }

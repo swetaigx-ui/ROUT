@@ -380,7 +380,35 @@ class CommandRouter(
             else true to "Tumhare latest SMS: " + items.joinToString(". ") + "."
         }
 
-        // --- Extra one-tap settings panels ---
+        // --- Send my location to a contact (WhatsApp maps link, confirm) ---
+        QuickAnswers.parseSendLocation(t)?.let { nameRaw ->
+            if (!has(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                return false to "Location ke liye permission chahiye. Prompt mein allow karo, fir dobara bolo."
+            }
+            val loc = DeviceActions.lastLocation(context)
+                ?: return false to "Location abhi nahi mil rahi. Maps ek baar khol lo, fir dobara bolo."
+            val link = "https://maps.google.com/?q=${loc.first},${loc.second}"
+            if (nameRaw.isEmpty()) {
+                return true to "Tumhari location: ${"%.5f".format(loc.first)}, ${"%.5f".format(loc.second)} - $link"
+            }
+            if (!has(Manifest.permission.READ_CONTACTS)) {
+                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+            }
+            val contact = DeviceActions.findContact(context, nameRaw)
+                ?: return false to "\"$nameRaw\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
+            val body = "Meri location: $link"
+            requestConfirmation(ConfirmRequest("whatsapp", "Location WhatsApp ${contact.first}?") {
+                DeviceActions.whatsappMessage(context, contact.second, body).message
+            })
+            return true to "${contact.first} ko apni location WhatsApp karni hai - screen par confirm karo ya 'haan' bolo."
+        }
+
+        // --- Song recognition (Google sound search / Shazam, honest deep link) ---
+        if (QuickAnswers.isSongIdQ(t)) {
+            val r = DeviceActions.songSearch(context); return r.ok to r.message
+        }
+
+                // --- Extra one-tap settings panels ---
         when {
             Regex("^airplane mode(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "airplane"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
@@ -574,6 +602,9 @@ class CommandRouter(
             if (m.groupValues[3] == "pm" && hour < 12) hour += 12
             if (m.groupValues[3] == "am" && hour == 12) hour = 0
             val r = DeviceActions.setAlarm(context, hour, minute); return r.ok to r.message
+        }
+        QuickAnswers.parseNamedTimer(t)?.let { (label, secs) ->
+            val r = DeviceActions.setTimer(context, secs, label); return r.ok to r.message
         }
         Regex("timer\\s*(?:for\\s*)?(\\d+)\\s*(minute|min|second)").find(t)?.let { m ->
             val secs = if (m.groupValues[2].startsWith("min")) m.groupValues[1].toInt() * 60 else m.groupValues[1].toInt()

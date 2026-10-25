@@ -440,11 +440,11 @@ object DeviceActions {
         else ActionResult(false, "No clock app found to set the alarm.")
     }
 
-    fun setTimer(context: Context, seconds: Int): ActionResult {
+    fun setTimer(context: Context, seconds: Int, label: String = "ROUT timer"): ActionResult {
         val intent = Intent(AlarmClock.ACTION_SET_TIMER)
             .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
-            .putExtra(AlarmClock.EXTRA_MESSAGE, "ROUT timer")
-        return if (launch(context, intent)) ActionResult(true, "Opening the clock app to start a ${seconds / 60} minute timer")
+            .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+        return if (launch(context, intent)) ActionResult(true, "Opening the clock app to start '$label' (${seconds / 60} minute)")
         else ActionResult(false, "No clock app found to start a timer.")
     }
 
@@ -610,5 +610,24 @@ object DeviceActions {
             }
         }
         return null
+    }
+
+    /** Song recognition: Google's sound search -> Shazam -> Google app (honest 1-tap path). */
+    fun songSearch(context: Context): ActionResult {
+        val gsa = Intent().setClassName("com.google.android.googlequicksearchbox",
+            "com.google.android.apps.gsa.staticplugins.soundsearch.SoundSearchActivity")
+        if (launch(context, gsa)) return ActionResult(true, "Google ka song search khul gaya - gaana suna do.")
+        if (openApp(context, "shazam").ok) return ActionResult(true, "Shazam khol diya - gaana suna do.")
+        if (openApp(context, "google").ok) return ActionResult(true, "Google app kholi hai - mic dabakar 'search a song' chuno. (On-device gaana pehchanna sirf Google/Shazam kar sakte hain.)")
+        return ActionResult(false, "Na Google app na Shazam mila. Play Store se Shazam install karo, fir dobara bolo.")
+    }
+
+    /** Last known location as (lat, lon) or null. */
+    fun lastLocation(context: Context): Pair<Double, Double>? {
+        return try {
+            val lm = context.getSystemService(android.location.LocationManager::class.java)
+            lm.getProviders(true).firstNotNullOfOrNull { p -> runCatching { lm.getLastKnownLocation(p) }.getOrNull() }
+                ?.let { it.latitude to it.longitude }
+        } catch (_: Exception) { null }
     }
 }

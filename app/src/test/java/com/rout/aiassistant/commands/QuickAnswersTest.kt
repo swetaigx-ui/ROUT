@@ -99,4 +99,20 @@ class QuickAnswersTest {
 
     @Test fun emergency() { assertTrue(QuickAnswers.isEmergencyCall("emergency call karo")) }
     @Test fun emergencyNull() { assertTrue(!QuickAnswers.isEmergencyCall("rahul ko call karo")) }
+
+    // --- Send location / named timer / song id ---
+    @Test fun sendLocHindi() { assertEquals("rahul", QuickAnswers.parseSendLocation("meri location rahul ko bhejo")) }
+    @Test fun sendLocEnglish() { assertEquals("rahul", QuickAnswers.parseSendLocation("send my location to rahul")) }
+    @Test fun locSelf() { assertEquals("", QuickAnswers.parseSendLocation("meri location batao")) }
+    @Test fun sendLocNull() { assertNull(QuickAnswers.parseSendLocation("location settings kholo")) }
+
+    @Test fun namedTimerChai() { assertEquals("chai" to 300, QuickAnswers.parseNamedTimer("5 minute ka chai timer lagao")) }
+    @Test fun namedTimerEnglish() { assertEquals("study" to 1500, QuickAnswers.parseNamedTimer("set a study timer for 25 minutes")) }
+    @Test fun namedTimerSeconds() { assertEquals("pasta" to 90, QuickAnswers.parseNamedTimer("pasta timer 90 seconds")) }
+    @Test fun namedTimerPlainIsNull() { assertNull(QuickAnswers.parseNamedTimer("timer 5 minutes")) }
+    @Test fun namedTimerNoneIsNull() { assertNull(QuickAnswers.parseNamedTimer("timer lagao")) }
+
+    @Test fun songId() { assertTrue(QuickAnswers.isSongIdQ("ye gaana kaunsa hai")) }
+    @Test fun songIdEnglish() { assertTrue(QuickAnswers.isSongIdQ("what song is this")) }
+    @Test fun songIdNull() { assertTrue(!QuickAnswers.isSongIdQ("gaana chalao")) }
 }
