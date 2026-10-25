@@ -108,6 +108,47 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 }
             }
 
+            Section("Alerts & bedtime") {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val batteryAlert by vm.batteryAlert.collectAsState()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Battery full/low alert", color = RoutText)
+                        Text("Speaks when the battery is full or low while the app is open.", color = RoutDim, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = batteryAlert, onCheckedChange = { scope.launch { vm.prefs.setBatteryAlert(it) } }, colors = switchColors())
+                }
+                Spacer(Modifier.height(10.dp))
+                val flipSilent by vm.flipSilent.collectAsState()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Flip to silent", color = RoutText)
+                        Text("Phone placed face-down goes silent while the app is open.", color = RoutDim, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = flipSilent, onCheckedChange = { scope.launch { vm.prefs.setFlipSilent(it) } }, colors = switchColors())
+                }
+                Spacer(Modifier.height(10.dp))
+                val bedtime by vm.bedtime.collectAsState()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Bedtime mode", color = RoutText)
+                        Text(
+                            if (bedtime != null) "Nightly DND at ${bedtime!!.first}:${"%02d".format(bedtime!!.second)}. Say 'bedtime off' to stop."
+                            else "Say 'bedtime 11 baje' to turn on Do Not Disturb every night.",
+                            color = RoutDim, style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    if (bedtime != null) {
+                        Text("Off", color = RoutCyan, modifier = Modifier.clickable {
+                            scope.launch {
+                                vm.prefs.clearBedtime()
+                                com.rout.aiassistant.commands.DeviceActions.cancelBedtime(ctx)
+                            }
+                        })
+                    }
+                }
+            }
+
             Section("ROUT voice") {
                 val currentVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
                 Text(

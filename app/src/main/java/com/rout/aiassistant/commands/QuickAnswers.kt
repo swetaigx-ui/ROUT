@@ -445,4 +445,30 @@ object QuickAnswers {
         val t = text.trim().lowercase()
         return (Regex("(gaana|song|gana)").containsMatchIn(t) && Regex("(kaunsa|kaun sa|which|what|pehchan|baj raha)").containsMatchIn(t))
     }
+
+    /** "bedtime 11 baje" / "raat 10:30 baje bedtime" -> (hour24, minute), or null. Returns (-1,-1) for "bedtime off". */
+    fun parseBedtime(text: String): Pair<Int, Int>? {
+        val t = text.trim().lowercase()
+        if (!t.contains("bedtime") && !t.contains("bed time")) return null
+        if (Regex("(off|band|hatao|cancel)").containsMatchIn(t)) return -1 to -1
+        val timeM = Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|baje)").find(t) ?: return null
+        var hour = timeM.groupValues[1].toInt()
+        val minute = timeM.groupValues[2].ifEmpty { "0" }.toInt()
+        if (hour > 24 || minute > 59) return null
+        val marker = timeM.groupValues[3]
+        val pm = marker == "pm" || (marker == "baje" && (Regex("(raat|rat|shaam|sham|night)").containsMatchIn(t) || hour < 7))
+        val am = marker == "am" || (marker == "baje" && Regex("(subah|morning)").containsMatchIn(t))
+        if (pm && hour < 12) hour += 12
+        if (am && hour == 12) hour = 0
+        if (marker == "baje" && !pm && !am && hour < 12) hour += 12 // bedtime defaults to night
+        if (hour >= 24) return null
+        return hour to minute
+    }
+
+    /** News cue: "news batao" / "headlines sunao" / "khabar". */
+    fun isNewsQ(text: String): Boolean {
+        val t = text.trim().lowercase()
+        return Regex("(news|headlines|khabar|khabre|samachar)").containsMatchIn(t) &&
+            Regex("(batao|sunao|dikhao|kya hai|latest|aaj|tell|read)").containsMatchIn(t)
+    }
 }

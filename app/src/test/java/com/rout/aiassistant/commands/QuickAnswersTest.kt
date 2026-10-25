@@ -115,4 +115,22 @@ class QuickAnswersTest {
     @Test fun songId() { assertTrue(QuickAnswers.isSongIdQ("ye gaana kaunsa hai")) }
     @Test fun songIdEnglish() { assertTrue(QuickAnswers.isSongIdQ("what song is this")) }
     @Test fun songIdNull() { assertTrue(!QuickAnswers.isSongIdQ("gaana chalao")) }
+
+    // --- Bedtime / news ---
+    @Test fun bedtimeHindi() { assertEquals(23 to 0, QuickAnswers.parseBedtime("bedtime 11 baje raat")) }
+    @Test fun bedtimeExplicit() { assertEquals(22 to 30, QuickAnswers.parseBedtime("raat 10:30 baje bedtime lagao")) }
+    @Test fun bedtimeAm() { assertEquals(23 to 0, QuickAnswers.parseBedtime("bedtime 11 pm")) }
+    @Test fun bedtimeOff() { assertEquals(-1 to -1, QuickAnswers.parseBedtime("bedtime band karo")) }
+    @Test fun bedtimeNull() { assertNull(QuickAnswers.parseBedtime("bedtime story sunao")) }
+
+    @Test fun newsCue() { assertTrue(QuickAnswers.isNewsQ("news batao")) }
+    @Test fun newsCue2() { assertTrue(QuickAnswers.isNewsQ("aaj ki headlines sunao")) }
+    @Test fun newsNull() { assertTrue(!QuickAnswers.isNewsQ("news app kholo")) }
+
+    // --- RSS parse ---
+    @Test fun rssTitles() {
+        val xml = "<rss><channel><title>G</title><item><title><![CDATA[First headline]]></title></item><item><title>Second headline</title></item></channel></rss>"
+        assertEquals(listOf("First headline", "Second headline"), NewsService.parseTitles(xml))
+    }
+    @Test fun rssEmpty() { assertEquals(emptyList<String>(), NewsService.parseTitles("<rss/>")) }
 }

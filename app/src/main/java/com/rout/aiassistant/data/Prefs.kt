@@ -24,6 +24,10 @@ class Prefs(private val context: Context) {
         val DEV_AI_ENABLED = booleanPreferencesKey("dev_ai_enabled")
         val VOICE_NAME = stringPreferencesKey("voice_name")
         val TRANSLATE_MODE = booleanPreferencesKey("translate_mode")
+        val BATTERY_ALERT = booleanPreferencesKey("battery_alert")
+        val FLIP_SILENT = booleanPreferencesKey("flip_silent")
+        val BEDTIME_HOUR = intPreferencesKey("bedtime_hour")
+        val BEDTIME_MINUTE = intPreferencesKey("bedtime_minute")
         val BRIEFING_COMMAND = stringPreferencesKey("briefing_command")
         val BRIEFING_HOUR = intPreferencesKey("briefing_hour")
         val BRIEFING_MINUTE = intPreferencesKey("briefing_minute")
@@ -40,6 +44,12 @@ class Prefs(private val context: Context) {
     val devAiEnabled: Flow<Boolean> = context.ds.data.map { it[DEV_AI_ENABLED] ?: false }
     val voiceName: Flow<String> = context.ds.data.map { it[VOICE_NAME] ?: "Achernar" }
     val translateMode: Flow<Boolean> = context.ds.data.map { it[TRANSLATE_MODE] ?: false }
+    val batteryAlert: Flow<Boolean> = context.ds.data.map { it[BATTERY_ALERT] ?: false }
+    val flipSilent: Flow<Boolean> = context.ds.data.map { it[FLIP_SILENT] ?: false }
+    val bedtime: Flow<Pair<Int, Int>?> = context.ds.data.map { p ->
+        val h = p[BEDTIME_HOUR]; val m = p[BEDTIME_MINUTE]
+        if (h != null && m != null) h to m else null
+    }
     val briefingCommand: Flow<String> = context.ds.data.map { it[BRIEFING_COMMAND] ?: "" }
     val briefingTime: Flow<Pair<Int, Int>?> = context.ds.data.map { p ->
         val h = p[BRIEFING_HOUR]; val m = p[BRIEFING_MINUTE]
@@ -57,6 +67,12 @@ class Prefs(private val context: Context) {
     suspend fun setDevAiEnabled(v: Boolean) = context.ds.edit { it[DEV_AI_ENABLED] = v }
     suspend fun setVoiceName(v: String) = context.ds.edit { it[VOICE_NAME] = v }
     suspend fun setTranslateMode(v: Boolean) = context.ds.edit { it[TRANSLATE_MODE] = v }
+    suspend fun setBatteryAlert(v: Boolean) = context.ds.edit { it[BATTERY_ALERT] = v }
+    suspend fun setFlipSilent(v: Boolean) = context.ds.edit { it[FLIP_SILENT] = v }
+    suspend fun setBedtime(hour: Int, minute: Int) = context.ds.edit {
+        it[BEDTIME_HOUR] = hour; it[BEDTIME_MINUTE] = minute
+    }
+    suspend fun clearBedtime() = context.ds.edit { it.remove(BEDTIME_HOUR); it.remove(BEDTIME_MINUTE) }
     suspend fun setBriefing(command: String, hour: Int, minute: Int) = context.ds.edit {
         it[BRIEFING_COMMAND] = command; it[BRIEFING_HOUR] = hour; it[BRIEFING_MINUTE] = minute
     }

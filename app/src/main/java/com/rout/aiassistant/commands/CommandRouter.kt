@@ -408,6 +408,74 @@ class CommandRouter(
             val r = DeviceActions.songSearch(context); return r.ok to r.message
         }
 
+                // --- News briefing (public RSS, honest on availability) ---
+        if (QuickAnswers.isNewsQ(t)) {
+            val hindi = Regex("(hindi|hindi mein)").containsMatchIn(t) || raw.any { it in '\u0900'..'\u097F' }
+            val items = NewsService.headlines(hindi)
+            return if (items.isEmpty()) false to "News feed abhi nahi mil raha. Net check karke dobara try karo."
+            else true to "Aaj ki top khabrein: " + items.mapIndexed { i, h -> "${i + 1}. $h" }.joinToString(" ")
+        }
+
+        // --- Voice memo ---
+        if (Regex("^(?:voice memo|memo|recording)\\s*(?:record|shuru|start|banao|karo|start karo)?$").matches(t)) {
+            if (!has(Manifest.permission.RECORD_AUDIO)) {
+                return false to "Voice memo ke liye mic permission chahiye. Prompt mein allow karo, fir dobara bolo."
+            }
+            val f = com.rout.aiassistant.service.MemoRecorder.start(context)
+            return if (f != null) true to "Memo record ho raha hai. Rokne ke liye 'memo stop karo' bolo."
+            else false to "Recording shuru nahi ho payi. Ek baar aur try karo."
+        }
+        if (Regex("^(?:memo|voice memo|recording)\\s+(?:stop|band|rok)(?:\\s+karo|\\s+kar do|\\s+do)?$").matches(t)) {
+            val f = com.rout.aiassistant.service.MemoRecorder.stop()
+            return if (f != null) true to "Memo save ho gaya (${f.name}). Sunne ke liye 'memo sunao' bolo."
+            else false to "Koi recording chal nahi rahi thi."
+        }
+        if (Regex("^(?:memo|memos|voice memos?)\\s+(?:sunao|play\\s*karo|chalao)$").matches(t)) {
+            val memos = com.rout.aiassistant.service.MemoRecorder.list(context)
+            if (memos.isEmpty()) return true to "Koi memo nahi mila. 'Voice memo record karo' se banao."
+            val ok = com.rout.aiassistant.service.MemoRecorder.play(context, memos.first())
+            return if (ok) true to "Latest memo chala raha hoon."
+            else false to "Memo play nahi ho paya."
+        }
+        if (Regex("^(?:memos|voice memos?)\\s+(?:dikhao|batao|list)$").matches(t)) {
+            val memos = com.rout.aiassistant.service.MemoRecorder.list(context)
+            if (memos.isEmpty()) return true to "Koi memo nahi mila."
+            val fmt = java.text.SimpleDateFormat("d MMM, h:mm a", java.util.Locale.getDefault())
+            return true to "Tumhare memos: " + memos.take(5).joinToString("; ") { fmt.format(java.util.Date(it.lastModified())) } + "."
+        }
+
+        // --- Battery alert toggle ---
+        if (Regex("^battery (?:full )?alert\\s+(?:on|chalu)(?:\\s+karo)?$").matches(t)) {
+            prefs.setBatteryAlert(true)
+            return true to "Battery alert on. Jab ROUT khula hoga, battery full ya low pe bata dunga. (App band hone pe alert nahi bajta - Android ki seema.)"
+        }
+        if (Regex("^battery (?:full )?alert\\s+(?:off|band)(?:\\s+karo)?$").matches(t)) {
+            prefs.setBatteryAlert(false)
+            return true to "Battery alert band kar diya."
+        }
+
+        // --- Flip-to-silent toggle ---
+        if (Regex("^(?:flip to silent|ulta silent|phone ulta)(?:\\s+mode)?\\s+(?:on|chalu)(?:\\s+karo)?$").matches(t)) {
+            prefs.setFlipSilent(true)
+            return true to "Flip-to-silent on. Jab ROUT khula hoga, phone ko screen-niche rakhne se silent ho jaayega. (App band hone pe kaam nahi karta - Android ki seema.)"
+        }
+        if (Regex("^(?:flip to silent|ulta silent|phone ulta)(?:\\s+mode)?\\s+(?:off|band)(?:\\s+karo)?$").matches(t)) {
+            prefs.setFlipSilent(false)
+            return true to "Flip-to-silent band kar diya."
+        }
+
+        // --- Bedtime mode: nightly DND ---
+        QuickAnswers.parseBedtime(t)?.let { (hour, minute) ->
+            if (hour == -1) {
+                DeviceActions.cancelBedtime(context)
+                prefs.clearBedtime()
+                return true to "Bedtime band kar diya."
+            }
+            val r = DeviceActions.scheduleBedtime(context, hour, minute)
+            if (r.ok) prefs.setBedtime(hour, minute)
+            return r.ok to r.message
+        }
+
                 // --- Extra one-tap settings panels ---
         when {
             Regex("^airplane mode(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {

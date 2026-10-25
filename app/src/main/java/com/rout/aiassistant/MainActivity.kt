@@ -26,6 +26,64 @@ class MainActivity : ComponentActivity() {
 
     private val vm: MainViewModel by viewModels()
 
+    // --- Battery full/low voice alert: works while the ROUT app is open (honest scope). ---
+    private var lastBatteryBucket = -1
+    private val batteryReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: android.content.Context, i: android.content.Intent) {
+            if (!vm.batteryAlert.value) return
+            val level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+            if (level < 0 || scale <= 0) return
+            val pct = level * 100 / scale
+            val status = i.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+            val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            val bucket = when { pct >= 99 && charging -> 2; pct <= 20 && !charging -> 1; else -> 0 }
+            if (bucket != 0 && bucket != lastBatteryBucket) {
+                vm.engine.speak(if (bucket == 2) "Battery full ho gayi, charger hata sakte ho."
+                    else "Battery low hai, $pct percent bacha hai. Charger laga lo.")
+            }
+            lastBatteryBucket = bucket
+        }
+    }
+
+    // --- Flip-to-silent: accelerometer, while the ROUT app is open (honest scope). ---
+    private var faceDownSince = 0L
+    private var silencedByFlip = false
+    private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as android.hardware.SensorManager }
+    private val accelListener = object : android.hardware.SensorEventListener {
+        override fun onSensorChanged(e: android.hardware.SensorEvent) {
+            if (!vm.flipSilent.value) { faceDownSince = 0; return }
+            val z = e.values[2]
+            if (z < -8.5f) {
+                if (faceDownSince == 0L) faceDownSince = System.currentTimeMillis()
+                if (!silencedByFlip && System.currentTimeMillis() - faceDownSince > 900) {
+                    silencedByFlip = true
+                    com.rout.aiassistant.commands.DeviceActions.setRingerMode(this@MainActivity, "silent")
+                    vm.engine.speak("Phone ulti hai - silent kar diya.")
+                }
+            } else if (z > 0) {
+                faceDownSince = 0
+                silencedByFlip = false
+            }
+        }
+        override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) {}
+    }
+
+    override fun onResume() {
+        super.onResume()
+        registerReceiver(batteryReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.let {
+            sensorManager.registerListener(accelListener, it, android.hardware.SensorManager.SENSOR_DELAY_NORMAL)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        try { unregisterReceiver(batteryReceiver) } catch (_: Exception) {}
+        sensorManager.unregisterListener(accelListener)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)

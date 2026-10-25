@@ -57,6 +57,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val reducedMotion = prefs.reducedMotion.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val batteryAlert = prefs.batteryAlert.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val flipSilent = prefs.flipSilent.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val bedtime = prefs.bedtime.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _confirm = MutableStateFlow<ConfirmRequest?>(null)
     val confirm: StateFlow<ConfirmRequest?> = _confirm

@@ -313,6 +313,42 @@ object DeviceActions {
     }
 
 
+    /** Schedule nightly DND at (hour, minute). Returns an honest result about the exact-alarm grant. */
+    fun scheduleBedtime(context: Context, hour: Int, minute: Int): ActionResult {
+        val am = context.getSystemService(android.app.AlarmManager::class.java)
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, hour); set(java.util.Calendar.MINUTE, minute)
+            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+            if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        val pi = android.app.PendingIntent.getBroadcast(
+            context, 777000111,
+            android.content.Intent(context, com.rout.aiassistant.service.BedtimeReceiver::class.java)
+                .putExtra("hour", hour).putExtra("minute", minute),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
+                openSystemPanel(context, "apps")
+                ActionResult(false, "Exact alarm ki permission chahiye - khuli settings mein ROUT ko 'Alarms & reminders' allow karo, fir dobara bolo.")
+            } else {
+                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+                val h12 = if (hour % 12 == 0) 12 else hour % 12
+                ActionResult(true, "Bedtime set: roz raat $h12:${"%02d".format(minute)} baje DND on ho jaayega.")
+            }
+        } catch (e: Exception) { ActionResult(false, "Bedtime set nahi ho paya: ${e.message}") }
+    }
+
+    fun cancelBedtime(context: Context) {
+        val am = context.getSystemService(android.app.AlarmManager::class.java)
+        val pi = android.app.PendingIntent.getBroadcast(
+            context, 777000111,
+            android.content.Intent(context, com.rout.aiassistant.service.BedtimeReceiver::class.java),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        try { am.cancel(pi); pi.cancel() } catch (_: Exception) {}
+    }
+
     fun cancelBriefing(context: Context) {
         val am = context.getSystemService(AlarmManager::class.java)
         val intent = Intent(context, ReminderReceiver::class.java)
