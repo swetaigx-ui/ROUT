@@ -94,6 +94,20 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 }
             }
 
+            Section("Live translate") {
+                val translateMode by vm.translateMode.collectAsState()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Live translate mode", color = RoutText)
+                        Text(
+                            "Whatever you say is translated to the other language (Hindi <-> English) and spoken back. Say 'translate mode off' anytime.",
+                            color = RoutDim, style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Switch(checked = translateMode, onCheckedChange = { scope.launch { vm.prefs.setTranslateMode(it) } }, colors = switchColors())
+                }
+            }
+
             Section("ROUT voice") {
                 val currentVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
                 Text(

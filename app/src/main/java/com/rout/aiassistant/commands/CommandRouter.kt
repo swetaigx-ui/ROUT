@@ -89,10 +89,10 @@ internal fun parseCalendar(text: String, now: java.util.Calendar = java.util.Cal
     if (marker == "baje" && !pm && !am && hour < 7) hour += 12 // "4 baje" without context usually means evening
     val cue = Regex("(calendar|event|meeting|appointment|schedule|rakh do|banao|add karo|fix karo|set karo|yaad dilao)").containsMatchIn(t)
     if (!cue) return null
-    var title = t
+    var title = t.replace(timeM.value, " ")
     listOf("calendar mein", "calendar", "event", "appointment", "schedule karo", "schedule", "rakh do", "add karo", "fix karo", "set karo", "banao",
-        "aaj", "today", "kal", "tomorrow", "parso", "subah", "shaam", "sham", "dopahar", "raat", "rat", "saverey", "baje", "ko ", "ka ", "ki ", "ke ", "mein ", "please", " meeting").forEach { w -> title = title.replace(w, " ") }
-    title = title.replace(timeM.value, " ").replace(Regex("\\s+"), " ").trim()
+        "aaj", "today", "kal", "tomorrow", "parso", "subah", "shaam", "sham", "dopahar", "raat", "rat", "saverey", "ko ", " ka ", " ki ", " ke ", " mein ", "please", " meeting").forEach { w -> title = title.replace(w, " ") }
+    title = title.replace(Regex("\\s+"), " ").trim()
     if (title.isEmpty()) title = if (t.contains("meeting")) "Meeting" else "Event"
     val start = (now.clone() as java.util.Calendar).apply {
         add(java.util.Calendar.DAY_OF_YEAR, dayOffset)
@@ -101,6 +101,28 @@ internal fun parseCalendar(text: String, now: java.util.Calendar = java.util.Cal
     }
     val end = (start.clone() as java.util.Calendar).apply { add(java.util.Calendar.HOUR_OF_DAY, 1) }
     return Triple(title.replaceFirstChar { it.uppercase() }, start.timeInMillis, end.timeInMillis)
+}
+
+/** Pure: parse a daily-briefing phrasing into (command, hour, minute), or null. */
+internal fun parseBriefing(text: String, now: java.util.Calendar = java.util.Calendar.getInstance()): Triple<String, Int, Int>? {
+    val t = text.trim().lowercase()
+    if (!Regex("\\b(roz|har roz|every day|daily)\\b").containsMatchIn(t)) return null
+    val timeM = Regex("(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|baje)").find(t) ?: return null
+    var hour = timeM.groupValues[1].toInt()
+    val minute = timeM.groupValues[2].ifEmpty { "0" }.toInt()
+    if (hour > 24 || minute > 59) return null
+    val marker = timeM.groupValues[3]
+    val pm = marker == "pm" || (marker == "baje" && Regex("\\b(shaam|sham|dopahar|raat|rat)\\b").containsMatchIn(t))
+    val am = marker == "am" || (marker == "baje" && Regex("\\b(subah|saverey|morning)\\b").containsMatchIn(t))
+    if (pm && hour < 12) hour += 12
+    if (am && hour == 12) hour = 0
+    if (marker == "baje" && !pm && !am && hour < 7) hour += 12
+    var cmd = t.replace(timeM.value, " ")
+    listOf("har roz", "roz", "every day", "daily", "subah", "shaam", "sham", "dopahar", "raat", "rat", "saverey",
+        "mujhe", "briefing", "brief", "bata dena", "bata do", "batao", "sunao", "suna dena", "kar do", "karo", "dena", "do").forEach { w -> cmd = cmd.replace(w, " ") }
+    cmd = cmd.replace(Regex("\\s+"), " ").trim()
+    if (cmd.isEmpty()) return null
+    return Triple(cmd, hour, minute)
 }
 
 data class ConfirmRequest(
@@ -234,6 +256,28 @@ class CommandRouter(
             val items = svc.recentSummaries(5)
             return if (items.isEmpty()) true to "Abhi koi notification nahi hai."
             else true to "Tumhari latest notifications: " + items.joinToString(". ") + "."
+        }
+
+        // --- Daily spoken briefing ---
+        if (Regex("^(?:briefing|roz briefing)\\s+(?:band|off|hatao|cancel)(?:\\s+(?:karo|kar do))?$").matches(t)) {
+            DeviceActions.cancelBriefing(context)
+            prefs.clearBriefing()
+            return true to "Daily briefing band kar di."
+        }
+        parseBriefing(t)?.let { (cmd, hour, minute) ->
+            val r = DeviceActions.scheduleBriefing(context, cmd, hour, minute)
+            if (r.ok) prefs.setBriefing(cmd, hour, minute)
+            return r.ok to r.message
+        }
+
+        // --- Live translate mode ---
+        if (Regex("^(?:translate|translation|anuvad)(?:\\s+mode)?\\s+(?:on|chalu|shuru)(?:\\s+(?:karo|kar do))?$").matches(t)) {
+            prefs.setTranslateMode(true)
+            return true to "Translate mode on. Ab jo bhi bologe, main usse doosri bhasha mein bolunga (Hindi <-> English). Band karne ke liye 'translate mode off' bolo."
+        }
+        if (Regex("^(?:translate|translation|anuvad)(?:\\s+mode)?\\s+(?:off|band)(?:\\s+(?:karo|kar do))?$").matches(t)) {
+            prefs.setTranslateMode(false)
+            return true to "Translate mode off. Normal mode mein wapas."
         }
 
         // --- Translate: one-shot via backend brain ---
@@ -631,10 +675,18 @@ class CommandRouter(
                 "To enable AI answers, set the ROUT backend URL in Settings and connect this device."
             AiMode.BACKEND_NEEDS_ENROLLMENT -> false to
                 "The ROUT backend is set but this phone is not connected yet. Open Settings, tap Connect this device, and approve the link once."
-            else -> when (val r = pm.provider()!!.chat(history(), raw)) {
-                is AiResult.Reply -> true to r.text
-                is AiResult.SetupRequired -> false to r.message
-                is AiResult.Failure -> false to friendlyFailure(r.reason)
+            else -> {
+                val translateOn = prefs.translateMode.first()
+                val effectiveRaw = if (!translateOn) raw else {
+                    val hasDeva = raw.any { it in '\u0900'..'\u097F' }
+                    val target = if (hasDeva) "English" else "Hindi"
+                    "Translate the following into $target. Reply with ONLY the translation, no explanation.\n\n$raw"
+                }
+                when (val r = pm.provider()!!.chat(history(), effectiveRaw)) {
+                    is AiResult.Reply -> true to r.text
+                    is AiResult.SetupRequired -> false to r.message
+                    is AiResult.Failure -> false to friendlyFailure(r.reason)
+                }
             }
         }
     }

@@ -56,6 +56,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val onboarded = prefs.onboarded.stateIn(viewModelScope, SharingStarted.Eagerly, true) // default true until loaded
     val reducedMotion = prefs.reducedMotion.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _confirm = MutableStateFlow<ConfirmRequest?>(null)
     val confirm: StateFlow<ConfirmRequest?> = _confirm

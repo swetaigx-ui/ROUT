@@ -278,6 +278,40 @@ object DeviceActions {
     }
 
 
+
+    // --- Daily spoken briefing: exact alarm -> notification -> tap runs the command in-app ---
+    fun scheduleBriefing(context: Context, command: String, hour: Int, minute: Int): ActionResult {
+        val am = context.getSystemService(AlarmManager::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
+            launch(context, Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+            return ActionResult(false, "Roz exact waqt pe briefing ke liye one-time permission chahiye. Settings kholi hai - ROUT ko allow karo, fir dobara bolo.")
+        }
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, hour); set(java.util.Calendar.MINUTE, minute)
+            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+            if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        val intent = Intent(context, ReminderReceiver::class.java)
+            .putExtra("title", "ROUT briefing - tap karke suno: $command")
+            .putExtra("run_command", command)
+            .putExtra("hour", hour)
+            .putExtra("minute", minute)
+        val pi = PendingIntent.getBroadcast(context, 987654321, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+        // ReminderReceiver re-arms this daily when run_command is present.
+        return ActionResult(true, "Briefing set: roz ${"%d:%02d".format(hour, minute)} pe '$command'. Notification aayegi - tap karte hi ROUT bol dega. ('briefing band karo' se rukega.)")
+    }
+
+
+    fun cancelBriefing(context: Context) {
+        val am = context.getSystemService(AlarmManager::class.java)
+        val intent = Intent(context, ReminderReceiver::class.java)
+        val pi = PendingIntent.getBroadcast(context, 987654321, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        am.cancel(pi)
+    }
+
     fun exactAlarmStatus(context: Context): ActionResult {
         if (android.os.Build.VERSION.SDK_INT < 31) return ActionResult(true, "Is Android version par alarms hamesha exact hain.")
         val am = context.getSystemService(AlarmManager::class.java)

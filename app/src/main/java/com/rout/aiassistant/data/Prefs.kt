@@ -23,6 +23,10 @@ class Prefs(private val context: Context) {
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         val DEV_AI_ENABLED = booleanPreferencesKey("dev_ai_enabled")
         val VOICE_NAME = stringPreferencesKey("voice_name")
+        val TRANSLATE_MODE = booleanPreferencesKey("translate_mode")
+        val BRIEFING_COMMAND = stringPreferencesKey("briefing_command")
+        val BRIEFING_HOUR = intPreferencesKey("briefing_hour")
+        val BRIEFING_MINUTE = intPreferencesKey("briefing_minute")
     }
 
     val language: Flow<String> = context.ds.data.map { it[LANGUAGE] ?: "hi-IN" }
@@ -35,6 +39,12 @@ class Prefs(private val context: Context) {
     val reducedMotion: Flow<Boolean> = context.ds.data.map { it[REDUCED_MOTION] ?: false }
     val devAiEnabled: Flow<Boolean> = context.ds.data.map { it[DEV_AI_ENABLED] ?: false }
     val voiceName: Flow<String> = context.ds.data.map { it[VOICE_NAME] ?: "Achernar" }
+    val translateMode: Flow<Boolean> = context.ds.data.map { it[TRANSLATE_MODE] ?: false }
+    val briefingCommand: Flow<String> = context.ds.data.map { it[BRIEFING_COMMAND] ?: "" }
+    val briefingTime: Flow<Pair<Int, Int>?> = context.ds.data.map { p ->
+        val h = p[BRIEFING_HOUR]; val m = p[BRIEFING_MINUTE]
+        if (h != null && m != null) h to m else null
+    }
 
     suspend fun setLanguage(v: String) = context.ds.edit { it[LANGUAGE] = v }
     suspend fun setSpeechRate(v: Float) = context.ds.edit { it[SPEECH_RATE] = v }
@@ -46,6 +56,13 @@ class Prefs(private val context: Context) {
     suspend fun setReducedMotion(v: Boolean) = context.ds.edit { it[REDUCED_MOTION] = v }
     suspend fun setDevAiEnabled(v: Boolean) = context.ds.edit { it[DEV_AI_ENABLED] = v }
     suspend fun setVoiceName(v: String) = context.ds.edit { it[VOICE_NAME] = v }
+    suspend fun setTranslateMode(v: Boolean) = context.ds.edit { it[TRANSLATE_MODE] = v }
+    suspend fun setBriefing(command: String, hour: Int, minute: Int) = context.ds.edit {
+        it[BRIEFING_COMMAND] = command; it[BRIEFING_HOUR] = hour; it[BRIEFING_MINUTE] = minute
+    }
+    suspend fun clearBriefing() = context.ds.edit {
+        it.remove(BRIEFING_COMMAND); it.remove(BRIEFING_HOUR); it.remove(BRIEFING_MINUTE)
+    }
 
     // Developer/advanced AI key: stored encrypted on-device, entered by the user at runtime.
     // Never shipped in the app, never committed to source control.

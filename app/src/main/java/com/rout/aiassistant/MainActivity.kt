@@ -42,6 +42,10 @@ class MainActivity : ComponentActivity() {
             needed.add(Manifest.permission.READ_CALENDAR)
         }
         if (needed.isNotEmpty()) requestPermissions(needed.toTypedArray(), 42)
+        intent?.getStringExtra("run_command")?.takeIf { it.isNotBlank() }?.let { cmd ->
+            // Tapped a scheduled briefing notification - run its command once the UI is up.
+            window.decorView.post { vm.onUserText(cmd, fromVoice = false) }
+        }
         setContent {
             RoutTheme {
                 val nav = rememberNavController()
