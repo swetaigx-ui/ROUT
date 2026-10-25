@@ -39,7 +39,9 @@ import com.rout.aiassistant.data.Message
 import com.rout.aiassistant.ui.components.GlassBox
 import com.rout.aiassistant.ui.components.GlassFill
 import com.rout.aiassistant.ui.components.GlassFillStrong
-import com.rout.aiassistant.ui.components.OrbView
+import com.rout.aiassistant.ui.components.WarbyOrb
+import com.rout.aiassistant.ui.components.Warby
+import com.rout.aiassistant.ui.components.WarbyMode
 import com.rout.aiassistant.ui.components.RoutBackground
 import com.rout.aiassistant.ui.theme.*
 import com.rout.aiassistant.voice.AssistantState
@@ -53,6 +55,7 @@ import com.rout.aiassistant.voice.AssistantState
 @Composable
 fun HomeScreen(vm: MainViewModel, nav: NavController) {
     val state by vm.assistantState.collectAsState()
+    val emotion by vm.emotion.collectAsState()
     val rms by vm.rms.collectAsState()
     val partial by vm.partial.collectAsState()
     val messages by vm.messages.collectAsState()
@@ -148,7 +151,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                     verticalArrangement = Arrangement.Center
                 ) {
                     Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
-                        OrbView(state = state, rms = rms, reducedMotion = reducedMotion, size = 200.dp)
+                        WarbyOrb(state = state, emotion = emotion, rms = rms, reducedMotion = reducedMotion, size = 200.dp)
                     }
                     Spacer(Modifier.height(20.dp))
                     Text(
@@ -177,7 +180,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                     WaveBars(active = state == AssistantState.LISTENING, rms = rms, reducedMotion = reducedMotion)
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        if (state == AssistantState.LISTENING) "SPEAK NOW" else "TAP R TO TALK",
+                        warbyStatusLabel(state, emotion),
                         color = RoutDim, fontSize = 11.sp, letterSpacing = 2.sp
                     )
                 }
@@ -188,7 +191,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
-                        OrbView(state = state, rms = rms, reducedMotion = reducedMotion, size = 84.dp)
+                        WarbyOrb(state = state, emotion = emotion, rms = rms, reducedMotion = reducedMotion, size = 84.dp)
                     }
                     Spacer(Modifier.width(14.dp))
                     Column {
@@ -416,4 +419,17 @@ fun MessageBubble(m: Message, onReplay: () -> Unit) {
             }
         }
     }
+}
+
+/** His warby-orb.js status labels, live-state first, then emotion. */
+private fun warbyStatusLabel(state: AssistantState, emotion: com.rout.aiassistant.ui.components.WarbyEmotion?): String {
+    val mode = when (state) {
+        AssistantState.LISTENING -> "listening"
+        AssistantState.SPEAKING -> "talking"
+        AssistantState.PROCESSING, AssistantState.EXECUTING -> "thinking"
+        AssistantState.WAITING_CONFIRMATION -> "curious"
+        AssistantState.ERROR -> "sad"
+        AssistantState.IDLE -> emotion?.name?.lowercase() ?: "idle"
+    }
+    return Warby.label(mode)
 }

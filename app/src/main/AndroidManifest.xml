@@ -61,10 +61,23 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <!-- Floating orb overlay (explicitly enabled by user) -->
+        <!-- Floating orb overlay (explicitly enabled by user); mic session only while talking -->
         <service
             android:name=".service.FloatingOrbService"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Quick Settings tile: one tap -> ROUT opens straight into listening -->
+        <service
+            android:name=".service.RoutTileService"
+            android:exported="true"
+            android:label="ROUT Voice"
+            android:icon="@drawable/ic_stat_rout"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <!-- Reminder notifications -->
         <receiver

@@ -105,10 +105,14 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.READ_SMS)
         }
-        if (needed.isNotEmpty()) requestPermissions(needed.toTypedArray(), 42)
+        if (needed.isNotEmpty()) permLauncher.launch(needed.toTypedArray())
         intent?.getStringExtra("run_command")?.takeIf { it.isNotBlank() }?.let { cmd ->
             // Tapped a scheduled briefing notification - run its command once the UI is up.
             window.decorView.post { vm.onUserText(cmd, fromVoice = false) }
+        }
+        if (intent?.getBooleanExtra("tile_voice", false) == true) {
+            // Quick Settings tile: straight into listening.
+            window.decorView.post { vm.onMicTap() }
         }
         setContent {
             RoutTheme {
@@ -127,6 +131,20 @@ class MainActivity : ComponentActivity() {
                     composable("settings") { SettingsScreen(vm, nav) }
                 }
             }
+        }
+    }
+
+    // Bug 3: a command paused on a runtime permission resumes by itself after the grant.
+    private val permLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        if (result.any { it.value }) window.decorView.post { vm.onPermissionsResult() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.getBooleanExtra("tile_voice", false)) {
+            window.decorView.post { vm.onMicTap() }
         }
     }
 

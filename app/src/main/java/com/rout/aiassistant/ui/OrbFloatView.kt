@@ -25,6 +25,22 @@ class OrbFloatView(context: Context) : View(context) {
 
     private var wm: WindowManager? = null
     private var lp: WindowManager.LayoutParams? = null
+
+    /** Live overlay feedback: the ring/dot color follows the assistant state. */
+    fun setAssistantState(st: com.rout.aiassistant.voice.AssistantState) {
+        val col = when (st) {
+            com.rout.aiassistant.voice.AssistantState.LISTENING -> Color.parseColor("#4DE8FF")
+            com.rout.aiassistant.voice.AssistantState.SPEAKING -> Color.parseColor("#B18CFF")
+            com.rout.aiassistant.voice.AssistantState.PROCESSING,
+            com.rout.aiassistant.voice.AssistantState.EXECUTING -> Color.parseColor("#A5F3FF")
+            com.rout.aiassistant.voice.AssistantState.WAITING_CONFIRMATION -> Color.parseColor("#FF5CE1")
+            com.rout.aiassistant.voice.AssistantState.ERROR -> Color.parseColor("#FF4D6D")
+            com.rout.aiassistant.voice.AssistantState.IDLE -> Color.parseColor("#4DE8FF")
+        }
+        ring.color = col
+        core.color = col
+        invalidate()
+    }
     private var downX = 0f; private var downY = 0f; private var moved = false
     private var downTime = 0L
 

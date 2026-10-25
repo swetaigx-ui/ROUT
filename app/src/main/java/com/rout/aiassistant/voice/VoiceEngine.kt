@@ -89,34 +89,58 @@ class VoiceEngine(
     var voiceName: String = "Achernar"
     var deviceTokenProvider: () -> String = { "" }
 
+    // Speaks everything it is given, in order: a pre-action ack is never
+    // clipped by the post-action result. stopSpeaking() clears the queue.
+    private val speakQueue = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    @Volatile private var backendSpeaking = false
+
     fun speak(text: String) {
+        if (text.isBlank()) return
+        speakQueue.add(text)
+        drainSpeakQueue()
+    }
+
+    private fun drainSpeakQueue() {
         val bs = backendSpeaker
         val token = deviceTokenProvider()
-        if (bs != null && backendUrl.isNotBlank() && token.isNotBlank()) {
+        val backendReady = bs != null && backendUrl.isNotBlank() && token.isNotBlank()
+        if (backendReady) {
+            if (backendSpeaking) return
+            val next = speakQueue.poll() ?: return
+            backendSpeaking = true
             setState(AssistantState.SPEAKING)
             scope.launch {
-                val ok = bs.speak(backendUrl, token, voiceName, text) {
+                val ok = bs!!.speak(backendUrl, token, voiceName, next) {
                     scope.launch { if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE) }
                 }
-                if (ok) _voiceMode.value = "natural" else speakOnDevice(text)   // fallback is visible via voiceMode
+                if (ok) _voiceMode.value = "natural" else speakOnDevice(next)   // fallback is visible via voiceMode
+                backendSpeaking = false
+                if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)
+                drainSpeakQueue()
             }
         } else {
-            speakOnDevice(text)
+            // On-device TTS queues natively (QUEUE_ADD keeps the order).
+            while (true) {
+                val next = speakQueue.poll() ?: break
+                speakOnDevice(next, queue = true)
+            }
         }
     }
 
-    private fun speakOnDevice(text: String) {
+    private fun speakOnDevice(text: String, queue: Boolean = false) {
         _voiceMode.value = "device"
         initTts()
         if (!ttsReady) { _voiceMode.value = "unavailable"; setState(AssistantState.IDLE); return }
         setState(AssistantState.SPEAKING)
         tts?.setSpeechRate(speechRate)
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rout-" + UUID.randomUUID().toString())
+        tts?.speak(text, if (queue) TextToSpeech.QUEUE_ADD else TextToSpeech.QUEUE_FLUSH, null, "rout-" + UUID.randomUUID().toString())
     }
 
     fun stopSpeaking() {
+        speakQueue.clear()
         backendSpeaker?.stop()
         tts?.stop()
+        backendSpeaking = false
         if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)
     }
 

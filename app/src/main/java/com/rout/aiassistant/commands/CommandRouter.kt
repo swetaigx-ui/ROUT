@@ -145,8 +145,14 @@ class CommandRouter(
     private val prefs: Prefs,
     private val providerManager: () -> ProviderManager,
     private val history: () -> List<ChatTurn>,
-    private val requestConfirmation: (ConfirmRequest) -> Unit
+    private val requestConfirmation: (ConfirmRequest) -> Unit,
+    private val onPermissionNeeded: (String) -> Unit = {}
 ) {
+    // Pre-action ack ("YouTube khol rahi hoon") spoken BEFORE the action result.
+    @Volatile private var preAction: String? = null
+    fun consumePreAction(): String? { val p = preAction; preAction = null; return p }
+    private fun sayFirst(text: String) { preAction = text }
+
     private fun has(perm: String) =
         ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
 
@@ -174,6 +180,8 @@ class CommandRouter(
 
     private suspend fun singleStep(raw: String): Pair<Boolean, String> {
         val t = raw.lowercase().trim()
+        val permNotified = object { var done = false }
+        fun needPerm() { if (!permNotified.done) { permNotified.done = true; onPermissionNeeded(raw) } }
 
         // --- App launching by trailing verb: "youtube kholo", "whatsapp khol do", "translate chalao" ---
         // Checked before every search rule so a named app opens instead of being searched.
@@ -181,6 +189,7 @@ class CommandRouter(
         if (openTarget != null &&
             !openTarget.contains("search") && !openTarget.startsWith("youtube par") && !openTarget.startsWith("youtube pe") &&
             !openTarget.contains("\u0938\u0930\u094d\u091a")) {
+            sayFirst("$openTarget khol rahi hoon")
             val r = DeviceActions.openApp(context, openTarget)
             if (r.ok) return true to r.message
             // Not an installed app - try it as a website instead of failing silently (latin names only).
@@ -228,7 +237,7 @@ class CommandRouter(
         // --- WhatsApp draft-send: contact + message, show-then-confirm, chat opens prefilled ---
         parseWhatsapp(t)?.let { (name, body) ->
             if (!has(Manifest.permission.READ_CONTACTS)) {
-                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val contact = DeviceActions.findContact(context, name)
                 ?: return false to "\"$name\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
@@ -243,7 +252,7 @@ class CommandRouter(
             val name = m.groupValues[1].trim()
             val video = m.groupValues[2].isNotEmpty()
             if (!has(Manifest.permission.READ_CONTACTS)) {
-                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val contact = DeviceActions.findContactWithId(context, name)
                 ?: return false to "\"$name\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
@@ -341,7 +350,7 @@ class CommandRouter(
             var to = toRaw
             if (!to.contains("@")) {
                 if (!has(Manifest.permission.READ_CONTACTS)) {
-                    return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                    needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
                 }
                 to = DeviceActions.findContactEmail(context, to)
                     ?: return false to "\"$toRaw\" ka email address nahi mila. Poora email address bata do, jaise \"email to name@gmail.com saying ...\"."
@@ -365,7 +374,7 @@ class CommandRouter(
         // --- Missed calls + SMS readout ---
         if (Regex("(?:missed calls?|missed call)").containsMatchIn(t) && Regex("(dikhao|batao|kya hai|check|kaun|list|show)").containsMatchIn(t)) {
             if (!has(Manifest.permission.READ_CALL_LOG)) {
-                return false to "Missed calls ke liye call log permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "Missed calls ke liye call log permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val items = DeviceActions.recentMissedCalls(context)
             return if (items.isEmpty()) true to "Koi missed call nahi hai."
@@ -373,7 +382,7 @@ class CommandRouter(
         }
         if (Regex("^(?:sms|messages?|texts?)\\s+(?:padho|batao|dikhao|check\\s*karo|sunao)$|^(?:mere|my)\\s+(?:sms|texts?)\\s+(?:padho|batao|dikhao)$").matches(t)) {
             if (!has(Manifest.permission.READ_SMS)) {
-                return false to "SMS padhne ke liye SMS permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "SMS padhne ke liye SMS permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val items = DeviceActions.recentSms(context)
             return if (items.isEmpty()) true to "Koi recent SMS nahi hai."
@@ -383,7 +392,7 @@ class CommandRouter(
         // --- Send my location to a contact (WhatsApp maps link, confirm) ---
         QuickAnswers.parseSendLocation(t)?.let { nameRaw ->
             if (!has(Manifest.permission.ACCESS_COARSE_LOCATION)) {
-                return false to "Location ke liye permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "Location ke liye permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val loc = DeviceActions.lastLocation(context)
                 ?: return false to "Location abhi nahi mil rahi. Maps ek baar khol lo, fir dobara bolo."
@@ -392,7 +401,7 @@ class CommandRouter(
                 return true to "Tumhari location: ${"%.5f".format(loc.first)}, ${"%.5f".format(loc.second)} - $link"
             }
             if (!has(Manifest.permission.READ_CONTACTS)) {
-                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val contact = DeviceActions.findContact(context, nameRaw)
                 ?: return false to "\"$nameRaw\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
@@ -419,7 +428,7 @@ class CommandRouter(
         // --- Voice memo ---
         if (Regex("^(?:voice memo|memo|recording)\\s*(?:record|shuru|start|banao|karo|start karo)?$").matches(t)) {
             if (!has(Manifest.permission.RECORD_AUDIO)) {
-                return false to "Voice memo ke liye mic permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "Voice memo ke liye mic permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val f = com.rout.aiassistant.service.MemoRecorder.start(context)
             return if (f != null) true to "Memo record ho raha hai. Rokne ke liye 'memo stop karo' bolo."
@@ -577,9 +586,11 @@ class CommandRouter(
 
         // --- Camera / selfie ---
         if (Regex("^(?:selfie|selfi)(?:\\s+(?:lo|le lo|karo|kholo))?$").matches(t)) {
+            sayFirst("Selfie camera khol rahi hoon")
             val r = DeviceActions.openCamera(context, true); return r.ok to r.message
         }
         if (Regex("^(?:photo|picture|tasveer)(?:\\s+(?:lo|le lo|karo|khicho))?$").matches(t)) {
+            sayFirst("Camera khol rahi hoon")
             val r = DeviceActions.openCamera(context, false); return r.ok to r.message
         }
 
@@ -596,6 +607,7 @@ class CommandRouter(
             if (target.contains("search") || target.startsWith("youtube par")) {
                 // fall through to search handlers
             } else {
+                sayFirst("$target khol rahi hoon")
                 val r = DeviceActions.openApp(context, target)
                 return r.ok to r.message
             }
@@ -603,14 +615,17 @@ class CommandRouter(
 
         // --- YouTube search ---
         Regex("(?:youtube\\s*(?:par|pe|mein|on)?\\s*)(?:search\\s*karo|search|dhundho)[:\\s]+(.+)$").find(t)?.let {
+            sayFirst("YouTube par dhoondh rahi hoon")
             val r = DeviceActions.youtubeSearch(context, it.groupValues[1].trim()); return r.ok to r.message
         }
         Regex("^(?:youtube|yt)\\s+(.+)$").find(t)?.let {
+            sayFirst("YouTube par dhoondh rahi hoon")
             val r = DeviceActions.youtubeSearch(context, it.groupValues[1].trim()); return r.ok to r.message
         }
 
         // --- Web search ---
         Regex("(?:google\\s*(?:par|pe)?\\s*)?(?:search\\s*karo|search|google\\s*karo|dhundho)[:\\s]+(.+)$").find(t)?.let {
+            sayFirst("Google par search kar rahi hoon")
             val r = DeviceActions.webSearch(context, it.groupValues[1].trim()); return r.ok to r.message
         }
 
@@ -622,6 +637,7 @@ class CommandRouter(
         // --- Flashlight ---
         if (Regex("(torch|flashlight|flash|batti)").containsMatchIn(t)) {
             val on = !(t.contains("off") || t.contains("band") || t.contains("bujha"))
+            sayFirst(if (on) "Torch chalu kar rahi hoon" else "Torch band kar rahi hoon")
             val r = DeviceActions.flashlight(context, on); return r.ok to r.message
         }
 
@@ -683,7 +699,10 @@ class CommandRouter(
         if (t.contains("calendar")) { val r = DeviceActions.openCalendar(context); return r.ok to r.message }
         Regex("(?:navigate|directions?|rasta)\\s*(?:to|ka|tak)?\\s*(.+)$").find(t)?.let {
             val dest = it.groupValues[1].trim()
-            if (dest.isNotEmpty()) { val r = DeviceActions.navigate(context, dest); return r.ok to r.message }
+            if (dest.isNotEmpty()) {
+                sayFirst("Navigation shuru kar rahi hoon")
+                val r = DeviceActions.navigate(context, dest); return r.ok to r.message
+            }
         }
 
         // --- Calls: by contact name or spoken number; always show-then-confirm ---
@@ -700,7 +719,7 @@ class CommandRouter(
                 return true to "$digits par call karna hai - screen par confirm karo ya 'haan' bolo."
             }
             if (!has(Manifest.permission.READ_CONTACTS)) {
-                return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo, fir dobara bolo."
+                needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val contact = DeviceActions.findContact(context, name)
                 ?: return false to "\"$name\" naam ka contact nahi mila. Naam thoda aur saaf bolo, ya number bata do."
@@ -713,7 +732,7 @@ class CommandRouter(
             val name = m.groupValues[1].trim()
             val body = m.groupValues[2].trim()
             if (!has(Manifest.permission.READ_CONTACTS)) {
-                return false to "I need contacts permission to find $name. Grant it from the prompt and try again."
+                needPerm(); return false to "I need contacts permission to find $name. Grant it from the prompt - I will resume automatically."
             }
             val contact = DeviceActions.findContact(context, name)
                 ?: return false to "I could not find a contact matching $name."

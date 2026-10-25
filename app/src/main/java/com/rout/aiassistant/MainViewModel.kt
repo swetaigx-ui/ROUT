@@ -57,6 +57,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val reducedMotion = prefs.reducedMotion.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    // Warby's current emotion, detected from the user's actual words (his warby-orb.js rules).
+    val emotion = kotlinx.coroutines.flow.MutableStateFlow<com.rout.aiassistant.ui.components.WarbyEmotion?>(null)
+
+    // Command paused on a runtime permission; resumes automatically after the grant (bug 3).
+    @Volatile private var pendingAfterPermission: String? = null
+    fun onPermissionsResult() {
+        val pending = pendingAfterPermission ?: return
+        pendingAfterPermission = null
+        onUserText(pending, fromVoice = true)
+    }
     val batteryAlert = prefs.batteryAlert.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val flipSilent = prefs.flipSilent.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val bedtime = prefs.bedtime.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -130,7 +141,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             requestConfirmation = { req ->
                 _confirm.value = req
                 engine.setState(AssistantState.WAITING_CONFIRMATION)
-            }
+            },
+            onPermissionNeeded = { cmd -> pendingAfterPermission = cmd }
         )
         engine.initTts()
     }
@@ -186,6 +198,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
+            // A new command while a confirm was pending cancels the stale confirm (bug: it used to swallow speech).
+            if (_confirm.value != null) _confirm.value = null
+            // Warby reacts to the user's actual words (his warby-orb.js rules), voice or typed.
+            com.rout.aiassistant.ui.components.Warby.autoEmotion(text)?.let { emotion.value = it }
             db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = text))
             engine.setState(AssistantState.EXECUTING)
             val reply = try { router.handle(text) } catch (e: Exception) {
@@ -193,7 +209,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = reply))
             if (assistantState.value != AssistantState.WAITING_CONFIRMATION) {
-                if (fromVoice) engine.speak(reply.take(400)) else engine.setState(AssistantState.IDLE)
+                // Bug 1+2: every action says what it is doing first, then the result - voice or typed.
+                router.consumePreAction()?.let { engine.speak(it) }
+                engine.speak(reply.take(400))
             }
         }
     }

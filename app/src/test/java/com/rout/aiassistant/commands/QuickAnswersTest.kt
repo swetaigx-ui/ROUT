@@ -133,4 +133,17 @@ class QuickAnswersTest {
         assertEquals(listOf("First headline", "Second headline"), NewsService.parseTitles(xml))
     }
     @Test fun rssEmpty() { assertEquals(emptyList<String>(), NewsService.parseTitles("<rss/>")) }
+
+    // --- Warby emotion rules (his warby-orb.js, same order) ---
+    @Test fun emoLove() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.LOVE, com.rout.aiassistant.ui.components.Warby.autoEmotion("I love you rout")) }
+    @Test fun emoSad() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.SAD, com.rout.aiassistant.ui.components.Warby.autoEmotion("aaj bohot udaas hoon")) }
+    @Test fun emoAngry() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.ANGRY, com.rout.aiassistant.ui.components.Warby.autoEmotion("mujhe gussa aa raha hai")) }
+    @Test fun emoExcited() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.EXCITED, com.rout.aiassistant.ui.components.Warby.autoEmotion("wow zabardast")) }
+    @Test fun emoSleepy() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.SLEEPY, com.rout.aiassistant.ui.components.Warby.autoEmotion("good night rout")) }
+    @Test fun emoCurious() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.CURIOUS, com.rout.aiassistant.ui.components.Warby.autoEmotion("ye kya hai")) }
+    @Test fun emoThinking() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.THINKING, com.rout.aiassistant.ui.components.Warby.autoEmotion("ye solve karo")) }
+    @Test fun emoNone() { assertNull(com.rout.aiassistant.ui.components.Warby.autoEmotion("youtube kholo")) }
+    @Test fun emoLoveBeatsHappy() { assertEquals(com.rout.aiassistant.ui.components.WarbyEmotion.LOVE, com.rout.aiassistant.ui.components.Warby.autoEmotion("love you, thank you")) }
+    @Test fun labelCheck() { assertEquals("PLAYFUL VIBES", com.rout.aiassistant.ui.components.Warby.label("love")) }
+    @Test fun labelIdle() { assertEquals("READY - ROUT", com.rout.aiassistant.ui.components.Warby.label("idle")) }
 }
