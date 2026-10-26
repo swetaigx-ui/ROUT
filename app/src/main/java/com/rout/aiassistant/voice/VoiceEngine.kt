@@ -39,6 +39,9 @@ class VoiceEngine(
     /** "natural" (backend voice), "device" (on-device TTS), "unavailable". */
     private val _voiceMode = MutableStateFlow("device")
     val voiceMode: StateFlow<String> = _voiceMode
+    private val _voiceDetail = MutableStateFlow("")
+    /** Human-readable, honest description of which voice last spoke and why a fallback happened. */
+    val voiceDetail: StateFlow<String> = _voiceDetail
 
     private val _wakeSession = MutableStateFlow(false)
     val wakeSession: StateFlow<Boolean> = _wakeSession
@@ -113,7 +116,14 @@ class VoiceEngine(
                 val ok = bs!!.speak(backendUrl, token, voiceName, next) {
                     scope.launch { if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE) }
                 }
-                if (ok) _voiceMode.value = "natural" else speakOnDevice(next)   // fallback is visible via voiceMode
+                if (ok) {
+                    _voiceMode.value = "natural"; _voiceDetail.value = "Natural voice (server)"
+                } else if (bs.chunksPlayed > 0) {
+                    // Part of the reply already played in the natural voice: do not repeat it in another voice.
+                    _voiceMode.value = "natural"; _voiceDetail.value = "Natural voice cut off (" + (bs.lastFailure ?: "unknown") + ")"
+                } else {
+                    speakOnDevice(next, reason = bs.lastFailure ?: "unknown")
+                }
                 backendSpeaking = false
                 if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)
                 drainSpeakQueue()
@@ -127,8 +137,9 @@ class VoiceEngine(
         }
     }
 
-    private fun speakOnDevice(text: String, queue: Boolean = false) {
+    private fun speakOnDevice(text: String, queue: Boolean = false, reason: String? = null) {
         _voiceMode.value = "device"
+        _voiceDetail.value = if (reason != null) "Device voice (natural voice failed: $reason)" else "Device voice (no server connection)"
         initTts()
         if (!ttsReady) { _voiceMode.value = "unavailable"; setState(AssistantState.IDLE); return }
         setState(AssistantState.SPEAKING)

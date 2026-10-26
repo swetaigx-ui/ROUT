@@ -102,6 +102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val rms: StateFlow<Float> = engine.rms
     val partial: StateFlow<String> = engine.partial
     val voiceMode: StateFlow<String> = engine.voiceMode
+    val voiceDetail: StateFlow<String> = engine.voiceDetail
     val live = com.rout.aiassistant.voice.LiveSession()
     val liveState: StateFlow<String> = live.state
     val liveTranscript: StateFlow<String> = live.transcript

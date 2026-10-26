@@ -1,5 +1,6 @@
 package com.rout.aiassistant
 
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -67,7 +68,14 @@ class Rout071RenderTest {
             com.rout.aiassistant.ui.screens.SettingsScreen(vm, nav, scrollToEnd = true)
         }
         composeRule.waitForIdle()
-        repeat(6) { Thread.sleep(150); org.robolectric.shadows.ShadowLooper.idleMainLooper(); composeRule.waitForIdle() }
+        run {
+            val t0 = System.currentTimeMillis()
+            while (System.currentTimeMillis() - t0 < 30000) {
+                composeRule.mainClock.advanceTimeBy(200); Thread.sleep(50); org.robolectric.shadows.ShadowLooper.idleMainLooper(); composeRule.waitForIdle()
+                val nodes = composeRule.onAllNodesWithText("ROUT AI - POWERED BY GYAN").fetchSemanticsNodes()
+                if (nodes.isNotEmpty() && nodes[0].boundsInRoot.bottom < 2100f) break
+            }
+        }
         shot("settings_end_071")
         val tree = composeRule.onRoot().fetchSemanticsNode()
         fun walk(n: androidx.compose.ui.semantics.SemanticsNode, out: MutableList<Pair<String, androidx.compose.ui.geometry.Rect>>) {
@@ -79,6 +87,8 @@ class Rout071RenderTest {
         val about = all.filter { it.first.contains("POWERED BY GYAN", true) || it.first.contains("About", true) }
         val navLabel = all.last { it.first == "Connection" }
         about.forEach { println("BOUNDS " + it.first.take(40) + " " + it.second) }
+        val credit = all.first { it.first.contains("POWERED BY GYAN") }
+        org.junit.Assert.assertTrue("credit line must clear the nav bar", credit.second.bottom < navLabel.second.top - 40f)
         println("BOUNDS navLabel " + navLabel.second + " rootH=" + tree.boundsInRoot.height)
     }
 }

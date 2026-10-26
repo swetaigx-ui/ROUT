@@ -32,6 +32,10 @@ class BackendSpeaker(private val context: Context) {
 
     @Volatile private var player: MediaPlayer? = null
     @Volatile private var stopped = false
+    /** Why the last backend speak attempt failed (null = no failure). Shown in the status line so a fallback is diagnosable. */
+    @Volatile var lastFailure: String? = null
+    /** Number of chunks that actually played in the current/last speak call. */
+    @Volatile var chunksPlayed = 0
 
     suspend fun speak(
         backendUrl: String,
@@ -42,10 +46,12 @@ class BackendSpeaker(private val context: Context) {
     ): Boolean = coroutineScope {
         stop()
         stopped = false
+        lastFailure = null
+        chunksPlayed = 0
         val parts = splitSentences(text)
         if (parts.isEmpty()) return@coroutineScope false
         var current = withContext(Dispatchers.IO) { fetchWav(backendUrl, deviceToken, voice, parts[0]) }
-            ?: return@coroutineScope false
+            ?: return@coroutineScope false.also { if (lastFailure == null) lastFailure = "no audio" }
         for (i in parts.indices) {
             if (stopped) { current.delete(); return@coroutineScope true }
             val prefetch = if (i + 1 < parts.size) {
@@ -53,7 +59,8 @@ class BackendSpeaker(private val context: Context) {
             } else null
             val played = playFile(current)
             current.delete()
-            if (!played && !stopped) { prefetch?.await()?.delete(); return@coroutineScope false }
+            if (played) chunksPlayed++
+            if (!played && !stopped) { lastFailure = "playback error"; prefetch?.await()?.delete(); return@coroutineScope false }
             if (i + 1 < parts.size) {
                 current = prefetch?.await() ?: return@coroutineScope true // tail failed: end cleanly after what played
             }
@@ -109,14 +116,16 @@ class BackendSpeaker(private val context: Context) {
             }
             val body = JSONObject().put("text", text.take(2000)).put("voice", voice).toString()
             conn.outputStream.use { it.write(body.toByteArray()) }
-            if (conn.responseCode != 200) { conn.disconnect(); return null }
+            if (conn.responseCode != 200) { lastFailure = "server HTTP " + conn.responseCode; conn.disconnect(); return null }
             val bytes = conn.inputStream.use { it.readBytes() }
             conn.disconnect()
-            if (bytes.size < 200) return null
+            if (bytes.size < 200) { lastFailure = "empty audio"; return null }
             val f = File(context.cacheDir, "rout_tts_${System.nanoTime()}.wav")
             f.writeBytes(WavTail.process(bytes))
             f
-        } catch (e: Exception) { null }
+        } catch (e: java.net.SocketTimeoutException) { lastFailure = "timeout"; null
+        } catch (e: java.io.IOException) { lastFailure = "network error"; null
+        } catch (e: Exception) { lastFailure = "error"; null }
     }
 
     /**

@@ -46,7 +46,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
     if (scrollToEnd || scrollFraction > 0f) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
             androidx.compose.runtime.snapshotFlow { scrollState.maxValue }.first { it > 0 }
-            repeat(if (scrollToEnd) 4 else 1) {
+            repeat(if (scrollToEnd) 20 else 1) {
                 scrollState.scrollTo(if (scrollToEnd) scrollState.maxValue else (scrollState.maxValue * scrollFraction).toInt())
                 if (scrollToEnd) kotlinx.coroutines.delay(150)
             }
@@ -387,7 +387,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
             // --- Screens ---
             Section("Screens", accent = RoutIce) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history").forEach { (label, route) ->
                         OutlinedButton(onClick = { nav.navigate(route) }) { Text(label, color = RoutCyan) }
                     }

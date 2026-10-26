@@ -70,6 +70,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
     val online by vm.online.collectAsState()
     val reducedMotion by vm.reducedMotion.collectAsState()
     val voiceMode by vm.voiceMode.collectAsState()
+    val voiceDetail by vm.voiceDetail.collectAsState()
     val liveState by vm.liveState.collectAsState()
     val liveError by vm.liveError.collectAsState()
     val confirm by vm.confirm.collectAsState()
@@ -317,7 +318,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                         liveState == "live" -> "LIVE on - tap to end"
                         liveState == "connecting" -> "Live connecting..."
                         liveState == "failed" -> (liveError ?: "Live unavailable")
-                        voiceMode == "natural" -> "Natural voice on"
+                        voiceDetail.isNotBlank() -> "Last voice: " + voiceDetail
                         else -> ""
                     },
                     color = if (liveState == "failed") RoutError else RoutDim,
