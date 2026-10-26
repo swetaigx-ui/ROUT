@@ -76,7 +76,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
     ScreenScaffold(title = "Settings", nav = nav) {
       Box(Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
+            Modifier.fillMaxSize().verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Hero header: cat-orb identity + friendly greeting (approved concept)
@@ -427,16 +427,16 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
             radius = 28.dp,
             fill = Color(0xF2101A2B)
         ) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 navItems.forEach { (icon, label, y) ->
                     Column(
                         Modifier.clip(RoundedCornerShape(16.dp))
                             .clickable { scope.launch { scrollState.animateScrollTo(y.toInt()) } }
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                            .padding(horizontal = 2.dp, vertical = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(icon, label, tint = RoutCyan, modifier = Modifier.size(22.dp))
-                        Text(label, color = RoutIce, fontSize = 9.sp, maxLines = 1)
+                        Text(label, color = RoutIce, fontSize = 8.sp, maxLines = 1, softWrap = false)
                     }
                 }
             }

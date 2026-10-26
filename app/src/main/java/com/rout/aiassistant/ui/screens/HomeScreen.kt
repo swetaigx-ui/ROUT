@@ -19,6 +19,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -329,12 +335,27 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                     }
                 }
             }
-            Text(
-                "ROUT AI · POWERED BY GYAN",
-                color = Color(0xFF4F6987), fontSize = 10.sp, letterSpacing = 1.sp,
-                modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp),
-                textAlign = TextAlign.Center
-            )
+            // Bottom navigation (replaces the red-marked "POWERED BY GYAN" footer, per his video).
+            Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf(
+                    Triple(Icons.Default.Home, "Home", ""),
+                    Triple(Icons.Default.Edit, "Notes", "notes"),
+                    Triple(Icons.Default.Check, "Tasks", "tasks"),
+                    Triple(Icons.Default.Favorite, "Memory", "memory"),
+                    Triple(Icons.AutoMirrored.Filled.List, "History", "history"),
+                    Triple(Icons.Default.Settings, "Settings", "settings")
+                ).forEach { (icon, label, route) ->
+                    Column(
+                        Modifier.clip(RoundedCornerShape(14.dp))
+                            .clickable { if (route.isNotEmpty()) nav.navigate(route) }
+                            .padding(horizontal = 8.dp, vertical = 3.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(icon, label, tint = if (route.isEmpty()) RoutCyan else RoutDim, modifier = Modifier.size(22.dp))
+                        Text(label, color = if (route.isEmpty()) RoutIce else RoutDim, fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
         }
 
         // Mic rationale dialog
