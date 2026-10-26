@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -79,17 +80,18 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
     ScreenScaffold(title = "Settings", nav = nav) {
       Box(Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
+            Modifier.fillMaxSize().verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Hero header: cat-orb identity + friendly greeting (approved concept)
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                WarbyOrb(state = AssistantState.IDLE, emotion = WarbyEmotion.HAPPY, rms = 0f, reducedMotion = true, modifier = Modifier.size(56.dp))
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Settings", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Text("ROUT ko apne hisaab se set karo", color = RoutDim, fontSize = 13.sp)
-                }
+            // Name (used in the Home greeting)
+            val userNameSaved by vm.userName.collectAsState()
+            var nameInput by remember(userNameSaved) { mutableStateOf(userNameSaved) }
+            Section("Naam") {
+                OutlinedTextField(
+                    value = nameInput, onValueChange = { nameInput = it.take(30); vm.setUserName(it.take(30)) },
+                    label = { Text("Aapka naam (Home greeting mein)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), colors = fieldColors()
+                )
             }
 
             // --- Connection (live status) ---
@@ -411,38 +413,10 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 )
             }
 
-            Text("ROUT AI - POWERED BY GYAN", color = RoutViolet, fontSize = 12.sp,
+            Text("ROUT AI - POWERED BY GYAN", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
+                style = androidx.compose.ui.text.TextStyle(brush = Brush.horizontalGradient(listOf(Color(0xFFFF3CAC), Color(0xFF7B61FF), Color(0xFF2BD9FF), Color(0xFF3CF5A0)))),
                 modifier = Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(16.dp))
-        }
-        // Floating section navigation (icons jump to the section; replaces the old status header).
-        val navItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Float>> = listOf(
-            Triple(Icons.Default.Share, "Connection", yConn),
-            Triple(Icons.Default.Face, "Persona", yPersona),
-            Triple(Icons.Default.Phone, "Voice", yVoice),
-            Triple(Icons.Default.Build, "Controls", yControls),
-            Triple(Icons.Default.Star, "Appearance", yAppear),
-            Triple(Icons.Default.Lock, "Privacy", yPrivacy),
-            Triple(Icons.Default.Info, "About", yAbout)
-        )
-        com.rout.aiassistant.ui.components.GlassBox(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 12.dp).fillMaxWidth(),
-            radius = 28.dp,
-            fill = Color(0x9E101A2B)
-        ) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                navItems.forEach { (icon, label, y) ->
-                    Column(
-                        Modifier.clip(RoundedCornerShape(16.dp))
-                            .clickable { scope.launch { scrollState.animateScrollTo(y.toInt()) } }
-                            .padding(horizontal = 2.dp, vertical = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(icon, label, tint = RoutCyan, modifier = Modifier.size(22.dp))
-                        Text(label, color = RoutIce, fontSize = 8.sp, maxLines = 1, softWrap = false)
-                    }
-                }
-            }
         }
       }
     }
@@ -465,13 +439,11 @@ fun PermRow(label: String, granted: Boolean, valueText: String? = null, onClick:
 
 @Composable
 fun Section(title: String, accent: Color = RoutIce, trailing: String = "", onY: (Float) -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
-    com.rout.aiassistant.ui.components.GlassBox(radius = 18.dp, modifier = Modifier.fillMaxWidth().onGloballyPositioned { onY(it.positionInParent().y) }) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    com.rout.aiassistant.ui.components.GlassBox(radius = 26.dp, modifier = Modifier.fillMaxWidth().onGloballyPositioned { onY(it.positionInParent().y) }) {
+        Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(6.dp, 20.dp).clip(RoundedCornerShape(3.dp)).background(accent))
-                Spacer(Modifier.width(8.dp))
-                Text(title, style = MaterialTheme.typography.titleMedium, color = RoutIce, modifier = Modifier.weight(1f))
-                if (trailing.isNotBlank()) Text(trailing, color = accent, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Text(title, color = Color(0xFFF5F7FA), fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                if (trailing.isNotBlank()) Text(trailing, color = Color(0xFF8D97A6), style = MaterialTheme.typography.labelMedium)
             }
             content()
         }
@@ -484,4 +456,4 @@ fun DataButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun switchColors() = SwitchDefaults.colors(checkedTrackColor = RoutCyan, checkedThumbColor = RoutBlack)
+fun switchColors() = SwitchDefaults.colors(checkedTrackColor = Color(0xFF34D399), checkedThumbColor = Color.White, uncheckedTrackColor = Color(0x24FFFFFF), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent, checkedBorderColor = Color.Transparent)

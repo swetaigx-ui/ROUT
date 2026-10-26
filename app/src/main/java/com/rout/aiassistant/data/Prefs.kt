@@ -24,6 +24,7 @@ class Prefs(private val context: Context) {
         val DEV_AI_ENABLED = booleanPreferencesKey("dev_ai_enabled")
         val VOICE_NAME = stringPreferencesKey("voice_name")
         val PERSONA_MODE = stringPreferencesKey("persona_mode")
+        val USER_NAME = stringPreferencesKey("user_name")
         val WARBY_EMOTIONS = booleanPreferencesKey("warby_emotions")
         val TRANSLATE_MODE = booleanPreferencesKey("translate_mode")
         val BATTERY_ALERT = booleanPreferencesKey("battery_alert")
@@ -45,6 +46,8 @@ class Prefs(private val context: Context) {
     val reducedMotion: Flow<Boolean> = context.ds.data.map { it[REDUCED_MOTION] ?: false }
     val devAiEnabled: Flow<Boolean> = context.ds.data.map { it[DEV_AI_ENABLED] ?: false }
     val voiceName: Flow<String> = context.ds.data.map { it[VOICE_NAME] ?: "Achernar" }
+    val userName: Flow<String> = context.ds.data.map { it[USER_NAME] ?: "" }
+    suspend fun setUserName(v: String) = context.ds.edit { it[USER_NAME] = v.take(30) }
     val personaMode: Flow<String> = context.ds.data.map { it[PERSONA_MODE] ?: "" }
     val warbyEmotions: Flow<Boolean> = context.ds.data.map { it[WARBY_EMOTIONS] ?: true }
     val translateMode: Flow<Boolean> = context.ds.data.map { it[TRANSLATE_MODE] ?: false }

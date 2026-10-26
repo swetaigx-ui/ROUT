@@ -59,6 +59,23 @@ class Rout071RenderTest {
         shot("home_live_chat_071")
     }
 
+    @Test fun chatView() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        lateinit var vm: MainViewModel
+        composeRule.runOnUiThread { vm = MainViewModel(app) }
+        composeRule.setContent {
+            val nav = rememberNavController()
+            com.rout.aiassistant.ui.screens.ChatScreen(vm, nav)
+        }
+        composeRule.runOnUiThread { vm.onUserText("time batao", false) }
+        repeat(60) {
+            if (vm.messages.value.size >= 2) return@repeat
+            Thread.sleep(200)
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        }
+        shot("chat_071")
+    }
+
     @Test fun settingsEnd() {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         lateinit var vm: MainViewModel
@@ -73,7 +90,7 @@ class Rout071RenderTest {
             while (System.currentTimeMillis() - t0 < 30000) {
                 composeRule.mainClock.advanceTimeBy(200); Thread.sleep(50); org.robolectric.shadows.ShadowLooper.idleMainLooper(); composeRule.waitForIdle()
                 val nodes = composeRule.onAllNodesWithText("ROUT AI - POWERED BY GYAN").fetchSemanticsNodes()
-                if (nodes.isNotEmpty() && nodes[0].boundsInRoot.bottom < 2100f) break
+                if (nodes.isNotEmpty() && nodes[0].boundsInRoot.bottom < 2300f) break
             }
         }
         shot("settings_end_071")
@@ -85,7 +102,7 @@ class Rout071RenderTest {
         }
         val all = mutableListOf<Pair<String, androidx.compose.ui.geometry.Rect>>(); walk(tree, all)
         val about = all.filter { it.first.contains("POWERED BY GYAN", true) || it.first.contains("About", true) }
-        val navLabel = all.last { it.first == "Connection" }
+        val navLabel = all.last { it.first == "SETTINGS" }
         about.forEach { println("BOUNDS " + it.first.take(40) + " " + it.second) }
         val credit = all.first { it.first.contains("POWERED BY GYAN") }
         org.junit.Assert.assertTrue("credit line must clear the nav bar", credit.second.bottom < navLabel.second.top - 40f)

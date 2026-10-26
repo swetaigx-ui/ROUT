@@ -46,6 +46,11 @@ import com.rout.aiassistant.ui.components.GlassBox
 import com.rout.aiassistant.ui.components.GlassFill
 import com.rout.aiassistant.ui.components.GlassFillStrong
 import com.rout.aiassistant.ui.components.WarbyOrb
+import com.rout.aiassistant.ui.components.RubyOrb
+import com.rout.aiassistant.ui.components.RoutDock
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import com.rout.aiassistant.ui.components.Warby
 import com.rout.aiassistant.ui.components.WarbyMode
 import com.rout.aiassistant.ui.components.RoutBackground
@@ -98,267 +103,158 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
 
     RoutBackground {
         Column(
-            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 20.dp)
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ---- Header (pinned) ----
-            Row(
-                Modifier.fillMaxWidth().padding(top = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        "ROUT AI",
-                        style = TextStyle(
-                            brush = RoutBrandGradient, fontSize = 27.sp,
-                            fontWeight = FontWeight.Black, letterSpacing = 3.sp
-                        )
-                    )
-                    Text("YOUR PERSONAL AI", color = RoutDim, fontSize = 10.sp, letterSpacing = 3.sp,
-                        modifier = Modifier.padding(top = 3.dp))
+            // ---- Top: persona pill + settings ----
+            val persona by vm.personaMode.collectAsState()
+            val personaLabel = com.rout.aiassistant.ai.Personas.byId(persona).label
+            Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                GlassBox(radius = 50.dp) {
+                    Row(
+                        Modifier.clickable {
+                            val all = com.rout.aiassistant.ai.Personas.ALL
+                            val i = all.indexOfFirst { it.id == persona }.coerceAtLeast(0)
+                            vm.setPersona(all[(i + 1) % all.size].id)
+                        }.padding(horizontal = 18.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(9.dp).background(
+                            Brush.linearGradient(listOf(Color(0xFF5EEAD4), Color(0xFFA855F7))), RoundedCornerShape(50)))
+                        Spacer(Modifier.width(10.dp))
+                        Text("ROUT", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("  \u00B7 $personaLabel \u25BE", color = Color(0xFF8D97A6), fontSize = 15.sp, maxLines = 1)
+                    }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val pillText = when {
-                        !online -> "Offline"
-                        state == AssistantState.LISTENING -> "Listening"
-                        state == AssistantState.PROCESSING -> "Thinking"
-                        state == AssistantState.SPEAKING -> "Speaking"
-                        state == AssistantState.EXECUTING -> "Working"
-                        state == AssistantState.WAITING_CONFIRMATION -> "Confirm"
-                        state == AssistantState.ERROR -> "Error"
-                        else -> "Ready"
-                    }
-                    val persona by vm.personaMode.collectAsState()
-                    val personaLabel = com.rout.aiassistant.ai.Personas.byId(persona).label
-                    val pillFull = if (personaLabel.isNotBlank() && personaLabel != "Default") "$pillText - $personaLabel" else pillText
-                    val dotColor = when {
-                        !online -> RoutError
-                        state == AssistantState.ERROR -> RoutError
-                        state == AssistantState.IDLE -> RoutGreen
-                        else -> RoutCyan
-                    }
-                    GlassBox(radius = 50.dp) {
-                        Row(
-                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                GlassBox(radius = 50.dp) {
+                    Icon(Icons.Default.Settings, "Settings", tint = Color(0xFFC9D2DE),
+                        modifier = Modifier.size(46.dp).clickable { nav.navigate("settings") }.padding(12.dp))
+                }
+            }
+
+            // ---- Greeting card with ask field ----
+            val userName by vm.userName.collectAsState()
+            val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+            val greet = (if (hour < 12) "Good Morning" else if (hour < 17) "Good Afternoon" else "Good Evening") +
+                (if (userName.isNotBlank()) ", $userName" else "")
+            GlassBox(Modifier.fillMaxWidth(), radius = 26.dp) {
+                Column(Modifier.padding(20.dp)) {
+                    Text(greet, color = Color(0xFFF5F7FA), fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                    Text("Aaj main aapki kya madad karun?", color = Color(0xFF8D97A6), fontSize = 15.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.weight(1f).background(Color(0x0FFFFFFF), RoundedCornerShape(50))
+                                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(50))
+                                .padding(horizontal = 18.dp, vertical = 14.dp)
                         ) {
-                            Box(Modifier.size(7.dp).background(dotColor, RoundedCornerShape(50)))
-                            Spacer(Modifier.width(6.dp))
-                            Text(pillFull, color = RoutIce, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = text, onValueChange = { text = it }, singleLine = true,
+                                textStyle = TextStyle(color = Color(0xFFF5F7FA), fontSize = 15.sp),
+                                cursorBrush = Brush.linearGradient(listOf(RoutCyan, RoutCyan)),
+                                modifier = Modifier.fillMaxWidth(),
+                                decorationBox = { inner ->
+                                    if (text.isEmpty()) Text("ROUT se kuch bhi poochho\u2026", color = Color(0xFF8D97A6), fontSize = 15.sp, maxLines = 1)
+                                    inner()
+                                }
+                            )
                         }
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    GlassBox(radius = 50.dp) {
-                        Icon(Icons.Default.Settings, "Settings", tint = RoutDim,
-                            modifier = Modifier.size(40.dp).clickable { nav.navigate("settings") }.padding(10.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            Modifier.size(50.dp).background(Brush.linearGradient(listOf(Color(0xFF2563EB), Color(0xFF7C3AED))), RoundedCornerShape(50))
+                                .clickable { if (text.isNotBlank()) { vm.onUserText(text, false); text = "" } },
+                            contentAlignment = Alignment.Center
+                        ) { Text("\u2192", color = Color.White, fontSize = 18.sp) }
                     }
                 }
             }
 
-            // ---- Middle: orb + state, or conversation ----
-            if (messages.isEmpty()) {
-                Column(
-                    Modifier.weight(1f).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
-                        WarbyOrb(state = state, emotion = emotion, rms = rms, reducedMotion = reducedMotion, size = 200.dp)
-                    }
-                    Spacer(Modifier.height(20.dp))
-                    Text(
-                        when (state) {
-                            AssistantState.LISTENING -> "I'm listening..."
-                            AssistantState.ERROR -> "Kuch gadbad ho gayi"
-                            else -> "Your AI. Your World."
-                        },
-                        color = RoutText, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        when (state) {
-                            AssistantState.LISTENING -> if (partial.isBlank()) "Boliyega, main sun raha hoon..." else partial
-                            AssistantState.PROCESSING -> "Soch raha hoon..."
-                            AssistantState.SPEAKING -> "Bol raha hoon..."
-                            AssistantState.EXECUTING -> "Kar raha hoon..."
-                            AssistantState.ERROR -> "Mic ya network check karo, ya type karo"
-                            else -> "Tap the R orb, or type below."
-                        },
-                        color = if (state == AssistantState.ERROR) RoutError else RoutDim,
-                        fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 22.sp,
-                        modifier = Modifier.widthIn(max = 310.dp)
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    WaveBars(active = state == AssistantState.LISTENING, rms = rms, reducedMotion = reducedMotion)
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        warbyStatusLabel(state, emotion),
-                        color = RoutDim, fontSize = 11.sp, letterSpacing = 2.sp
-                    )
+            // ---- Stage: orb, status, caption ----
+            Column(
+                Modifier.weight(1f).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
+                    RubyOrb(state = state, rms = rms, reducedMotion = reducedMotion, size = 220.dp)
                 }
-            } else {
-                // Compact orb row + conversation (only this area scrolls)
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
-                        WarbyOrb(state = state, emotion = emotion, rms = rms, reducedMotion = reducedMotion, size = 84.dp)
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column {
-                        Text(
-                            when (state) {
-                                AssistantState.LISTENING -> if (partial.isBlank()) "Listening..." else partial
-                                AssistantState.PROCESSING -> "Thinking..."
-                                AssistantState.SPEAKING -> "Speaking..."
-                                AssistantState.EXECUTING -> "Working..."
-                                AssistantState.WAITING_CONFIRMATION -> "Confirm on screen, or say haan"
-                                AssistantState.ERROR -> "Error - try again or type"
-                                AssistantState.IDLE -> "Ready"
-                            },
-                            color = if (state == AssistantState.ERROR) RoutError else RoutDim,
-                            style = MaterialTheme.typography.bodyMedium, maxLines = 2
-                        )
-                        if (state == AssistantState.LISTENING) {
-                            Spacer(Modifier.height(6.dp))
-                            WaveBars(active = true, rms = rms, reducedMotion = reducedMotion, barCount = 10, maxH = 18)
-                        }
-                    }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    when {
+                        liveState == "live" -> "LIVE"
+                        liveState == "connecting" -> "CONNECTING\u2026"
+                        !online && state == AssistantState.IDLE -> "OFFLINE \u00B7 TAP TO TALK"
+                        state == AssistantState.LISTENING -> "LISTENING\u2026"
+                        state == AssistantState.PROCESSING -> "THINKING\u2026"
+                        state == AssistantState.SPEAKING -> "SPEAKING"
+                        state == AssistantState.EXECUTING -> "WORKING\u2026"
+                        state == AssistantState.WAITING_CONFIRMATION -> "CONFIRM ON SCREEN"
+                        state == AssistantState.ERROR -> "ERROR"
+                        else -> "TAP TO TALK"
+                    },
+                    color = if (state == AssistantState.ERROR) RoutError else Color(0xFF8D97A6),
+                    fontSize = 12.sp, letterSpacing = 3.sp
+                )
+                val lastReply = messages.lastOrNull { it.role != "user" }?.text
+                val caption = when {
+                    state == AssistantState.LISTENING && partial.isNotBlank() -> partial
+                    liveState == "live" -> "LIVE on - tap to end"
+                    lastReply != null -> lastReply
+                    else -> ""
                 }
-                // During a LIVE conversation the chat list is hidden (his request); it returns when LIVE ends.
-                if (liveState == "live" || liveState == "connecting") {
-                    Spacer(Modifier.weight(1f).fillMaxWidth())
-                } else LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(messages, key = { it.id }) { m -> MessageBubble(m, onReplay = { vm.replay(m.text) }) }
+                Box(Modifier.heightIn(min = 44.dp).padding(top = 8.dp).clickable(enabled = liveState == "live") { vm.toggleLive() }, contentAlignment = Alignment.Center) {
+                    Text(caption, color = Color(0xFFF5F7FA), fontSize = 17.sp, textAlign = TextAlign.Center, maxLines = 3,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 320.dp))
                 }
             }
 
-            // ---- Quick actions (pinned) ----
-            Text("QUICK ACTIONS", color = RoutDim, fontSize = 11.sp, letterSpacing = 2.sp)
-            Spacer(Modifier.height(8.dp))
-            val tiles = listOf(
-                Triple("▶️", "YouTube", "YouTube kholo"),
-                Triple("📞", "Call", "Phone kholo"),
-                Triple("🌤️", "Weather", "Weather batao"),
-                Triple("⌕", "Search", "Google kholo"),
-                Triple("◷", "Time", "Time batao"),
-                Triple("✧", "More", "Help")
-            )
-            tiles.chunked(3).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { (ico, label, cmd) ->
-                        GlassBox(radius = 18.dp, modifier = Modifier.weight(1f)) {
-                            Column(
-                                Modifier.fillMaxWidth().clickable { vm.onUserText(cmd, false) }
-                                    .padding(vertical = 12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(ico, fontSize = 22.sp)
-                                Spacer(Modifier.height(5.dp))
-                                Text(label, color = RoutIce, fontSize = 12.sp)
+            // ---- Status line: live / voice diagnostics ----
+            val statusText = when {
+                liveState == "connecting" -> "Live connecting..."
+                liveState == "failed" -> (liveError ?: "Live unavailable")
+                liveState == "live" -> ""
+                voiceDetail.isNotBlank() -> "Last voice: " + voiceDetail
+                else -> ""
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(statusText, color = if (liveState == "failed") RoutError else Color(0xFF8D97A6),
+                    style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.weight(1f))
+                if (liveState != "live" && liveState != "connecting") {
+                    Text("LIVE", color = RoutCyan, style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.clickable { if (!micGranted) showMicRationale = true else vm.toggleLive() }.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+                if (state != AssistantState.IDLE) {
+                    Text("STOP", color = RoutError, style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.clickable { vm.stopAll() }.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+            }
+
+            // ---- Skill cards (real ROUT commands) ----
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                listOf(
+                    Triple("\uD83D\uDD52", "Time & Date" to "Abhi kitne baje?", "time batao"),
+                    Triple("\u23F1\uFE0F", "Timer" to "2 minute ka timer", "2 minute ka timer"),
+                    Triple("\uD83D\uDCDD", "Notes" to "Kya yaad hai?", "__notes"),
+                    Triple("\uD83C\uDF24\uFE0F", "Weather" to "Aaj ka mausam", "weather batao"),
+                    Triple("\u25B6\uFE0F", "YouTube" to "YouTube kholo", "YouTube kholo"),
+                    Triple("\uD83D\uDCDE", "Call" to "Kisi ko call karo", "phone kholo")
+                ).forEach { (ico, titleSub, cmd) ->
+                    GlassBox(Modifier.width(150.dp).height(120.dp), radius = 22.dp) {
+                        Column(
+                            Modifier.fillMaxSize().clickable { if (cmd == "__notes") nav.navigate("notes") else vm.onUserText(cmd, false) }.padding(16.dp),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(ico, fontSize = 26.sp)
+                            Column {
+                                Text(titleSub.first, color = Color(0xFFF5F7FA), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(titleSub.second, color = Color(0xFF8D97A6), fontSize = 12.sp, maxLines = 1)
                             }
                         }
                     }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                Spacer(Modifier.height(8.dp))
             }
 
-            // ---- Talk bar (pinned) ----
-            GlassBox(Modifier.fillMaxWidth().imePadding(), radius = 28.dp, fill = GlassFillStrong) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)) {
-                    TextField(
-                        value = text, onValueChange = { text = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Ask ROUT anything...", color = RoutDim, fontSize = 14.sp) },
-                        singleLine = true,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            focusedTextColor = RoutText, unfocusedTextColor = RoutText
-                        )
-                    )
-                    Box(
-                        Modifier.size(42.dp).background(
-                            Brush.linearGradient(listOf(Color(0xFF1268A8), Color(0xFF2631A0))), RoundedCornerShape(50)
-                        ).clickable { if (text.isNotBlank()) { vm.onUserText(text, false); text = "" } },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Send, "Send", tint = RoutIce, modifier = Modifier.size(17.dp))
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        Modifier.size(52.dp).background(
-                            Brush.linearGradient(listOf(Color(0xFF41EAFF), Color(0xFF427AFF))), RoundedCornerShape(50)
-                        ).clickable { micTap() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            if (state == AssistantState.LISTENING) "■" else "🎙",
-                            fontSize = 20.sp, color = Color(0xFF061324)
-                        )
-                    }
-                }
-            }
-            // Live voice + stop controls (compact, only when relevant)
-            Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    when {
-                        liveState == "live" -> "LIVE on - tap to end"
-                        liveState == "connecting" -> "Live connecting..."
-                        liveState == "failed" -> (liveError ?: "Live unavailable")
-                        voiceDetail.isNotBlank() -> "Last voice: " + voiceDetail
-                        else -> ""
-                    },
-                    color = if (liveState == "failed") RoutError else RoutDim,
-                    style = MaterialTheme.typography.labelSmall, maxLines = 1,
-                    modifier = Modifier.clickable { vm.toggleLive() }
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (liveState != "live" && liveState != "connecting") {
-                        Text("LIVE", color = RoutCyan, style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.clickable { if (!micGranted) showMicRationale = true else vm.toggleLive() }.padding(horizontal = 8.dp, vertical = 4.dp))
-                    }
-                    if (state != AssistantState.IDLE) {
-                        Text("STOP", color = RoutError, style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.clickable { vm.stopAll() }.padding(horizontal = 8.dp, vertical = 4.dp))
-                    }
-                }
-            }
-            // Bottom navigation (replaces the red-marked "POWERED BY GYAN" footer, per his video).
-            GlassBox(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp), radius = 24.dp, fill = Color(0x2E101A2B)) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf(
-                    Triple(Icons.Default.Home, "Home", ""),
-                    Triple(Icons.Default.Edit, "Notes", "notes"),
-                    Triple(Icons.Default.Check, "Tasks", "tasks"),
-                    Triple(Icons.Default.Favorite, "Memory", "memory"),
-                    Triple(Icons.AutoMirrored.Filled.List, "History", "history"),
-                    Triple(Icons.Default.Settings, "Settings", "settings")
-                ).forEach { (icon, label, route) ->
-                    Column(
-                        Modifier.clip(RoundedCornerShape(14.dp))
-                            .clickable { if (route.isNotEmpty()) nav.navigate(route) }
-                            .padding(horizontal = 8.dp, vertical = 3.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(icon, label, tint = if (route.isEmpty()) RoutCyan else RoutDim, modifier = Modifier.size(22.dp))
-                        Text(label, color = if (route.isEmpty()) RoutIce else RoutDim, fontSize = 9.sp, maxLines = 1)
-                    }
-                }
-            }
-            }
+            // ---- Dock ----
+            RoutDock("home", nav, Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
         }
 
         // Mic rationale dialog

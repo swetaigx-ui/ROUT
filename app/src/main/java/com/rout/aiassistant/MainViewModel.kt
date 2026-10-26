@@ -59,6 +59,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val reducedMotion = prefs.reducedMotion.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val userName = prefs.userName.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    fun setUserName(v: String) { viewModelScope.launch { prefs.setUserName(v) } }
     val personaMode = prefs.personaMode.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val warbyEmotions = prefs.warbyEmotions.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 

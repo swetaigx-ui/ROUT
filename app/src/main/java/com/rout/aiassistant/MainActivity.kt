@@ -129,6 +129,7 @@ class MainActivity : ComponentActivity() {
                 }
                 NavHost(navController = nav, startDestination = "home") {
                     composable("home") { HomeScreen(vm, nav) }
+                    composable("chat") { com.rout.aiassistant.ui.screens.ChatScreen(vm, nav) }
                     composable("onboarding") { OnboardingScreen(vm, nav) }
                     composable("notes") { NotesScreen(vm, nav) }
                     composable("tasks") { TasksScreen(vm, nav) }
