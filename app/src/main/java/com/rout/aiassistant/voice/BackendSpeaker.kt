@@ -36,6 +36,25 @@ class BackendSpeaker(private val context: Context) {
     @Volatile var lastFailure: String? = null
     /** Number of chunks that actually played in the current/last speak call. */
     @Volatile var chunksPlayed = 0
+    /** After an upstream quota/rate-limit answer, stop asking the server for a while (fewer wasted free-tier requests). */
+    @Volatile private var pausedUntil = 0L
+
+    companion object {
+        const val QUOTA_PAUSE_MS = 60_000L
+        const val CACHE_KEEP = 12
+        /** Turns a non-200 /v1/speak answer into a precise label. Pure, unit-tested. */
+        fun describeServerFailure(code: Int, body: String): String {
+            val upstream = Regex("\"upstream_status\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)?.toIntOrNull()
+            return when {
+                upstream == 429 -> "voice service quota or rate limit reached (Gemini 429)"
+                upstream != null -> "voice service error (Gemini $upstream)"
+                code == 401 -> "device not authorised (HTTP 401)"
+                code == 429 -> "too many requests (HTTP 429)"
+                else -> "server HTTP $code"
+            }
+        }
+        fun isQuota(reason: String?) = reason?.contains("429") == true
+    }
 
     suspend fun speak(
         backendUrl: String,
@@ -48,6 +67,10 @@ class BackendSpeaker(private val context: Context) {
         stopped = false
         lastFailure = null
         chunksPlayed = 0
+        if (System.currentTimeMillis() < pausedUntil) {
+            lastFailure = "natural voice paused after quota limit (retrying in about a minute)"
+            return@coroutineScope false
+        }
         val parts = splitSentences(text)
         if (parts.isEmpty()) return@coroutineScope false
         var current = withContext(Dispatchers.IO) { fetchWav(backendUrl, deviceToken, voice, parts[0]) }
@@ -105,7 +128,23 @@ class BackendSpeaker(private val context: Context) {
         player = null
     }
 
+    private fun cacheFile(voice: String, text: String): File {
+        val h = java.security.MessageDigest.getInstance("SHA-256").digest((voice + "|" + text).toByteArray()).joinToString("") { "%02x".format(it) }.take(24)
+        return File(context.cacheDir, "rout_tts_c_$h.wav")
+    }
+    private fun trimCache() {
+        val files = context.cacheDir.listFiles { f -> f.name.startsWith("rout_tts_c_") }?.sortedByDescending { it.lastModified() } ?: return
+        files.drop(CACHE_KEEP).forEach { it.delete() }
+    }
+
     private fun fetchWav(backendUrl: String, deviceToken: String, voice: String, text: String): File? {
+        // Same text + voice again (replay, repeated answer): reuse the processed audio, no new free-tier request.
+        val cached = cacheFile(voice, text)
+        if (cached.exists() && cached.length() > 200) {
+            cached.setLastModified(System.currentTimeMillis())
+            val copy = File(context.cacheDir, "rout_tts_${System.nanoTime()}.wav")
+            return try { cached.copyTo(copy, overwrite = true) } catch (_: Exception) { null }
+        }
         return try {
             val conn = (URL(backendUrl.trimEnd('/') + "/v1/speak").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -116,12 +155,19 @@ class BackendSpeaker(private val context: Context) {
             }
             val body = JSONObject().put("text", text.take(2000)).put("voice", voice).toString()
             conn.outputStream.use { it.write(body.toByteArray()) }
-            if (conn.responseCode != 200) { lastFailure = "server HTTP " + conn.responseCode; conn.disconnect(); return null }
+            if (conn.responseCode != 200) {
+                val err = try { conn.errorStream?.use { String(it.readBytes()) } ?: "" } catch (_: Exception) { "" }
+                lastFailure = describeServerFailure(conn.responseCode, err)
+                if (isQuota(lastFailure)) pausedUntil = System.currentTimeMillis() + QUOTA_PAUSE_MS
+                conn.disconnect(); return null
+            }
             val bytes = conn.inputStream.use { it.readBytes() }
             conn.disconnect()
             if (bytes.size < 200) { lastFailure = "empty audio"; return null }
             val f = File(context.cacheDir, "rout_tts_${System.nanoTime()}.wav")
-            f.writeBytes(WavTail.process(bytes))
+            val processed = WavTail.process(bytes)
+            f.writeBytes(processed)
+            try { cacheFile(voice, text).writeBytes(processed); trimCache() } catch (_: Exception) {}
             f
         } catch (e: java.net.SocketTimeoutException) { lastFailure = "timeout"; null
         } catch (e: java.io.IOException) { lastFailure = "network error"; null
