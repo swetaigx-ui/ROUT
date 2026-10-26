@@ -17,6 +17,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -58,13 +62,21 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
     val currentPersona by vm.personaMode.collectAsState()
     val warbyEmotions by vm.warbyEmotions.collectAsState()
 
+    var yConn by remember { mutableStateOf(0f) }
+    var yPersona by remember { mutableStateOf(0f) }
+    var yVoice by remember { mutableStateOf(0f) }
+    var yControls by remember { mutableStateOf(0f) }
+    var yAppear by remember { mutableStateOf(0f) }
+    var yPrivacy by remember { mutableStateOf(0f) }
+    var yAbout by remember { mutableStateOf(0f) }
     var backendInput by remember(backendUrl) { mutableStateOf(backendUrl) }
     var cityInput by remember(weatherCity) { mutableStateOf(weatherCity) }
     var devKeyInput by remember { mutableStateOf("") }
 
     ScreenScaffold(title = "Settings", nav = nav) {
+      Box(Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(scrollState).padding(16.dp),
+            Modifier.fillMaxSize().verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Hero header: cat-orb identity + friendly greeting (approved concept)
@@ -79,19 +91,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
             // --- Connection (live status) ---
             val enrolled = vm.isDeviceEnrolled()
-            Section("Connection", accent = Color(0xFF4DFFA6), trailing = if (enrolled) "Connected" else "Not connected") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(if (enrolled) Color(0xFF4DFFA6) else RoutError))
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        when {
-                            enrolled -> "Connected via ROUT backend - sab ready hai"
-                            backendUrl.isNotBlank() -> "Backend set hai - is device ko connect karo"
-                            else -> "Backend URL set karo ya developer key mode use karo"
-                        },
-                        color = if (enrolled) RoutIce else RoutDim, style = MaterialTheme.typography.bodyMedium
-                    )
-                }
+            Section("Connection", accent = Color(0xFF4DFFA6), onY = { yConn = it }) {
                 Text(
                     "Recommended: ROUT backend (source included, folder backend/). Your AI key stays on the server - never inside the app.",
                     color = RoutDim, style = MaterialTheme.typography.bodyMedium
@@ -154,7 +154,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
             // --- Persona ---
             val personaLabel = Personas.byId(currentPersona).label
-            Section("ROUT persona", accent = Color(0xFFFF5CE1), trailing = if (personaLabel == "Default") "" else personaLabel) {
+            Section("ROUT persona", accent = Color(0xFFFF5CE1), trailing = if (personaLabel == "Default") "" else personaLabel, onY = { yPersona = it }) {
                 Text(
                     "Mode badalta hai ROUT KAISE bolti hai aur kaunsi voice use karti hai - kya kar sakti hai wo nahi badalta. " +
                     "Pet names (babu/sona) sirf Sweetheart mein; Professional kabhi nahi.",
@@ -174,7 +174,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
             // --- Voice & language ---
             val currentVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
-            Section("ROUT voice", accent = Color(0xFFB18CFF), trailing = currentVoice) {
+            Section("ROUT voice", accent = Color(0xFFB18CFF), trailing = currentVoice, onY = { yVoice = it }) {
                 Text(
                     "Natural backend voice for spoken replies (needs a connected device). Persona ka apna voice hota hai - yahan se bhi badal sakte ho.",
                     color = RoutDim, style = MaterialTheme.typography.bodyMedium
@@ -210,7 +210,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
             }
 
             // --- Quick controls ---
-            Section("Quick controls", accent = RoutCyan) {
+            Section("Quick controls", accent = RoutCyan, onY = { yControls = it }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(end = 12.dp)) {
                         Text("Hey ROUT session", color = RoutText)
@@ -280,7 +280,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
             }
 
             // --- Appearance ---
-            Section("Appearance", accent = Color(0xFFB18CFF)) {
+            Section("Appearance", accent = Color(0xFFB18CFF), onY = { yAppear = it }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(end = 12.dp)) {
                         Text("Cat orb emotions (Warby)", color = RoutText)
@@ -295,7 +295,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
             }
 
             // --- Permissions & privacy (live grant status) ---
-            Section("Permissions and privacy", accent = Color(0xFFFFB84D)) {
+            Section("Permissions and privacy", accent = Color(0xFFFFB84D), onY = { yPrivacy = it }) {
                 fun granted(perm: String) = ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
                 val micOk = granted(android.Manifest.permission.RECORD_AUDIO)
                 val contactsOk = granted(android.Manifest.permission.READ_CONTACTS)
@@ -392,7 +392,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
             }
 
             // --- About ---
-            Section("About ROUT", accent = RoutIce, trailing = BuildConfig.VERSION_NAME) {
+            Section("About ROUT", accent = RoutIce, trailing = BuildConfig.VERSION_NAME, onY = { yAbout = it }) {
                 PermRow("Version", true, valueText = BuildConfig.VERSION_NAME) {}
                 OutlinedButton(onClick = {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/swetaigx-ui/ROUT")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -412,6 +412,36 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 modifier = Modifier.align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(16.dp))
         }
+        // Floating section navigation (icons jump to the section; replaces the old status header).
+        val navItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Float>> = listOf(
+            Triple(Icons.Default.Share, "Connection", yConn),
+            Triple(Icons.Default.Face, "Persona", yPersona),
+            Triple(Icons.Default.Phone, "Voice", yVoice),
+            Triple(Icons.Default.Build, "Controls", yControls),
+            Triple(Icons.Default.Star, "Appearance", yAppear),
+            Triple(Icons.Default.Lock, "Privacy", yPrivacy),
+            Triple(Icons.Default.Info, "About", yAbout)
+        )
+        com.rout.aiassistant.ui.components.GlassBox(
+            modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 12.dp).fillMaxWidth(),
+            radius = 28.dp,
+            fill = Color(0xF2101A2B)
+        ) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                navItems.forEach { (icon, label, y) ->
+                    Column(
+                        Modifier.clip(RoundedCornerShape(16.dp))
+                            .clickable { scope.launch { scrollState.animateScrollTo(y.toInt()) } }
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(icon, label, tint = RoutCyan, modifier = Modifier.size(22.dp))
+                        Text(label, color = RoutIce, fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+      }
     }
 }
 
@@ -431,8 +461,8 @@ fun PermRow(label: String, granted: Boolean, valueText: String? = null, onClick:
 }
 
 @Composable
-fun Section(title: String, accent: Color = RoutIce, trailing: String = "", content: @Composable ColumnScope.() -> Unit) {
-    com.rout.aiassistant.ui.components.GlassBox(radius = 18.dp, modifier = Modifier.fillMaxWidth()) {
+fun Section(title: String, accent: Color = RoutIce, trailing: String = "", onY: (Float) -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+    com.rout.aiassistant.ui.components.GlassBox(radius = 18.dp, modifier = Modifier.fillMaxWidth().onGloballyPositioned { onY(it.positionInParent().y) }) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp, 20.dp).clip(RoundedCornerShape(3.dp)).background(accent))

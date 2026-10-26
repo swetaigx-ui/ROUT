@@ -219,7 +219,10 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                         }
                     }
                 }
-                LazyColumn(
+                // During a LIVE conversation the chat list is hidden (his request); it returns when LIVE ends.
+                if (liveState == "live" || liveState == "connecting") {
+                    Spacer(Modifier.weight(1f).fillMaxWidth())
+                } else LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
