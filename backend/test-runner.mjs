@@ -343,3 +343,16 @@ console.log('ROUND-3 TESTS PASSED');
   assert.ok((await (await worker.fetch(new Request('https://t/oauth/start?id=' + id2), env2)).text()).includes('not configured'));
   console.log('ok owner-oauth');
 }
+
+{
+  const { toCleanWav } = await import('./worker.mjs');
+  const fs = await import('node:fs');
+  const src = new Uint8Array(fs.readFileSync(new URL('./fixtures/gemini_style.wav', import.meta.url)));
+  const out = toCleanWav(src);
+  assert.equal(out.length, 44 + 48000, 'trailing metadata chunk must be dropped');
+  assert.equal(String.fromCharCode(...out.subarray(0, 4)), 'RIFF');
+  assert.equal(new DataView(out.buffer).getUint32(40, true), 48000);
+  const raw = toCleanWav(new Uint8Array(4800)); // raw PCM still wrapped
+  assert.equal(raw.length, 44 + 4800);
+  console.log('ok clean-wav');
+}

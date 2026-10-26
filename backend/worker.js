@@ -301,13 +301,35 @@ function b64ToBytes(b64) {
   return out;
 }
 
-function pcmToWav(pcm, sampleRate = 24000) {
+// Gemini TTS can return a complete RIFF/WAVE file (with a trailing C2PA provenance chunk) instead of raw PCM.
+// Wrapping that again as PCM played the 44-byte header as a start burst and the metadata as loud static at the
+// end of every reply. If the bytes are already a WAV, rebuild a clean one from fmt + data only; otherwise wrap raw PCM.
+export function toCleanWav(bytes) {
+  const tag = (o) => String.fromCharCode(bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]);
+  if (bytes.length >= 44 && tag(0) === 'RIFF' && tag(8) === 'WAVE') {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let off = 12, rate = 24000, ch = 1, bits = 16, data = null;
+    while (off + 8 <= bytes.length) {
+      const id = tag(off); const len = dv.getUint32(off + 4, true);
+      if (id === 'fmt ' && off + 24 <= bytes.length) { ch = dv.getUint16(off + 10, true); rate = dv.getUint32(off + 12, true); bits = dv.getUint16(off + 22, true); }
+      if (id === 'data') { data = bytes.subarray(off + 8, Math.min(bytes.length, off + 8 + len)); break; }
+      off += 8 + len + (len & 1);
+    }
+    if (data && bits === 16 && ch >= 1 && rate >= 8000) {
+      data = data.subarray(0, data.length - (data.length % (2 * ch)));
+      return pcmToWav(data, rate, ch);
+    }
+  }
+  return pcmToWav(bytes);
+}
+
+function pcmToWav(pcm, sampleRate = 24000, channels = 1) {
   const header = new ArrayBuffer(44);
   const v = new DataView(header);
   const wstr = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
   wstr(0, 'RIFF'); v.setUint32(4, 36 + pcm.length, true); wstr(8, 'WAVE');
-  wstr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  wstr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, channels, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2 * channels, true); v.setUint16(32, 2 * channels, true); v.setUint16(34, 16, true);
   wstr(36, 'data'); v.setUint32(40, pcm.length, true);
   const out = new Uint8Array(44 + pcm.length);
   out.set(new Uint8Array(header), 0); out.set(pcm, 44);
@@ -337,11 +359,11 @@ async function handleSpeak(request, env) {
       signal: AbortSignal.timeout(25000)
     });
   const data = await upstream.json().catch(() => ({}));
-  if (!upstream.ok) return json({ error: 'upstream_error' }, 502);
+  if (!upstream.ok) return json({ error: 'upstream_error', upstream_status: upstream.status, upstream_reason: String(((data || {}).error || {}).status || '').slice(0, 40) }, 502);
   const parts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
   const audio = parts.map(p => (p.inlineData && p.inlineData.data) || '').find(d => d);
   if (!audio) return json({ error: 'no_audio' }, 502);
-  const wav = pcmToWav(b64ToBytes(audio));
+  const wav = toCleanWav(b64ToBytes(audio));
   return new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } });
 }
 

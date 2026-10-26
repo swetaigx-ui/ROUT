@@ -70,4 +70,20 @@ class WavTailTest {
         val w = wav(24000, 1, speechThenTail(24000, 1.0, 1.0, 60)); w[34] = 8
         assertTrue(WavTail.process(w).contentEquals(w))
     }
+
+    @Test fun unwrapsDoubleWrappedGeminiWavWithC2paTail() {
+        val r = 24000
+        val inner = wav(r, 1, speechThenTail(r, 1.0, 0.0, 0)) + ByteArray(6000) { 0x7f } // trailing metadata chunk bytes
+        // outer header (as old worker built) around the whole inner file
+        val outer = wav(r, 1, ShortArray(0)).copyOf(44)
+        fun w32(o: Int, v: Int) { for (k in 0..3) outer[o + k] = (v shr (8 * k)).toByte() }
+        w32(4, 36 + inner.size); w32(40, inner.size)
+        val out = WavTail.process(outer + inner)
+        val sec = (out.size - 44) / 2.0 / r
+        assertTrue("inner header/metadata must be gone, got $sec", sec in 1.0..1.3)
+        // no loud static at the very end
+        val n = out.size
+        val last = (out[n - 2].toInt() and 0xFF) or (out[n - 1].toInt() shl 8)
+        assertEquals(0, last)
+    }
 }

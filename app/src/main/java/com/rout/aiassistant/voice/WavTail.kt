@@ -37,6 +37,11 @@ object WavTail {
             off += 8 + len + (len and 1)
         }
         if (!fmtSeen || bits != 16 || dataOff < 0 || rate < 8000) return wav
+        // Older worker builds wrapped a complete Gemini WAV (header + trailing C2PA chunk) as if it were raw PCM:
+        // the header played as a start burst and the metadata as loud static at the end. Unwrap it here too.
+        if (dataLen >= 44 && String(wav, dataOff, 4) == "RIFF" && String(wav, dataOff + 8, 4) == "WAVE") {
+            return process(wav.copyOfRange(dataOff, dataOff + dataLen), padMs, fadeOutMs, fadeInMs)
+        }
         val frameBytes = 2 * channels
         dataLen -= dataLen % frameBytes
         if (dataLen < frameBytes * rate / 4) return wav // under 250 ms: leave alone
