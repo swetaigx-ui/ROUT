@@ -109,7 +109,7 @@ class QuickAnswersTest {
     @Test fun namedTimerChai() { assertEquals("chai" to 300, QuickAnswers.parseNamedTimer("5 minute ka chai timer lagao")) }
     @Test fun namedTimerEnglish() { assertEquals("study" to 1500, QuickAnswers.parseNamedTimer("set a study timer for 25 minutes")) }
     @Test fun namedTimerSeconds() { assertEquals("pasta" to 90, QuickAnswers.parseNamedTimer("pasta timer 90 seconds")) }
-    @Test fun namedTimerPlainIsNull() { assertNull(QuickAnswers.parseNamedTimer("timer 5 minutes")) }
+    @Test fun namedTimerPlainGetsDefaultLabel() { assertEquals("ROUT timer" to 300, QuickAnswers.parseNamedTimer("timer 5 minutes")) }
     @Test fun namedTimerNoneIsNull() { assertNull(QuickAnswers.parseNamedTimer("timer lagao")) }
 
     @Test fun songId() { assertTrue(QuickAnswers.isSongIdQ("ye gaana kaunsa hai")) }

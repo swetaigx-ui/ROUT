@@ -337,7 +337,7 @@ object QuickAnswers {
 
     fun moonPhaseAnswer(text: String, now: Calendar = Calendar.getInstance()): String? {
         val t = text.trim().lowercase()
-        if (!Regex("(moon phase|chaand|chand ka|poornima|amavasya|purnima)").containsMatchIn(t)) return null
+        if (!Regex("(moon phase|chaand|chand ka|chand ki|chand kaisa|moon|poornima|amavasya|purnima)").containsMatchIn(t)) return null
         val age = moonAge(now)
         val phase = when {
             age < 1.85 -> "New moon (amavasya ke aas-paas)"
@@ -436,7 +436,7 @@ object QuickAnswers {
         var label = t.replace(timeM.value, " ")
         listOf("timer", "lagao", "laga do", "set karo", "set", "karo", "ka", "ki", "ke", "mujhe", "ek", "a", "for", "chahiye").forEach { w -> label = label.replace(Regex("\\b$w\\b"), " ") }
         label = label.replace(Regex("\\s+"), " ").trim()
-        if (label.isEmpty()) return null
+        if (label.isEmpty()) label = "ROUT timer"
         return label to secs
     }
 

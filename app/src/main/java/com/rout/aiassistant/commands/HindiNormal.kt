@@ -9,6 +9,14 @@ package com.rout.aiassistant.commands
 object HindiNormal {
 
     private val PHRASES: List<Pair<String, String>> = listOf(
+        "\u091f\u093e\u0907\u092e\u0930" to "timer",
+        "\u0938\u094d\u0915\u094d\u0930\u0940\u0928 \u0936\u0949\u091f" to "screenshot",
+        "\u0938\u094d\u0915\u094d\u0930\u0940\u0928\u0936\u0949\u091f" to "screenshot",
+        "\u0938\u094d\u0915\u094d\u0930\u0940\u0928\u0938\u094d\u0939\u0949\u091f" to "screenshot",
+        "\u0932\u0947 \u0932\u094b" to "le lo",
+        "\u092e\u093f\u0928\u091f" to "minute",
+        "\u0938\u0947\u0915\u0902\u0921" to "second",
+        "\u0918\u0902\u091f\u0947" to "ghante",
         // compounds first
         "\u0915\u093f\u0924\u0928\u0947 \u092c\u091c\u0947" to "kitne baje",
         "\u0915\u094d\u092f\u093e \u0938\u092e\u092f" to "kya samay",
@@ -65,10 +73,24 @@ object HindiNormal {
         "\u0939\u0948\u0902" to "hain"
     )
 
+    // Standalone "\u0932\u094b" (lo) only as a whole word, so "\u092c\u094b\u0932\u094b"/"\u0916\u094b\u0932\u094b" are never mangled.
+    private val LO = Regex("(?<![\u0900-\u097F])\u0932\u094b(?![\u0900-\u097F])")
+
+    /** STT sometimes repeats the whole utterance ("X X"); collapse an exact doubled phrase. */
+    fun dedupeRepeat(t: String): String {
+        val words = t.trim().split(Regex("\\s+"))
+        if (words.size >= 2 && words.size % 2 == 0) {
+            val h = words.size / 2
+            if (words.subList(0, h) == words.subList(h, words.size)) return words.subList(0, h).joinToString(" ")
+        }
+        return t
+    }
+
     fun latinize(t: String): String {
         if (t.none { it in '\u0900'..'\u097F' }) return t
         var out = t
         for ((dev, lat) in PHRASES) out = out.replace(dev, lat)
+        out = LO.replace(out, "lo")
         return out.replace(Regex("\\s+"), " ").trim()
     }
 }

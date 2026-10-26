@@ -49,3 +49,20 @@ class Phase1ParseTest {
         assertEquals(3600_000L, end - start)
     }
 }
+
+class ReminderAltTest {
+    private fun now(): Calendar = Calendar.getInstance().apply {
+        set(2026, Calendar.OCTOBER, 26, 9, 0, 0); set(Calendar.MILLISECOND, 0)
+    }
+    @Test fun kalBaje() {
+        val (title, c) = parseReminderAlt("mujhe kal 5 baje dawai yaad dilana", now())!!
+        assertEquals("dawai", title)
+        assertEquals(27, c.get(Calendar.DAY_OF_MONTH))
+    }
+    @Test fun shaamBaje() {
+        val (_, c) = parseReminderAlt("aaj shaam 7 baje chai ki yaad dilao", now())!!
+        assertEquals(19, c.get(Calendar.HOUR_OF_DAY))
+        assertEquals(26, c.get(Calendar.DAY_OF_MONTH))
+    }
+    @Test fun nonReminderIsNull() { assertNull(parseReminderAlt("mausam batao", now())) }
+}

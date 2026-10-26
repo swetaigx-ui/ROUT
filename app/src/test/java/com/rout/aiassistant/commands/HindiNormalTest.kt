@@ -15,4 +15,8 @@ class HindiNormalTest {
     }
     @Test fun latinUntouched() { assertEquals("youtube kholo", HindiNormal.latinize("youtube kholo")) }
     @Test fun freeTextUntouched() { assertEquals("\u0930\u093e\u092e\u093e\u092f\u0923 \u0915\u0939\u093e\u0928\u0940", HindiNormal.latinize("\u0930\u093e\u092e\u093e\u092f\u0923 \u0915\u0939\u093e\u0928\u0940")) }
+    @Test fun screenshotLo() { assertEquals("screenshot lo", HindiNormal.latinize("\u0938\u094d\u0915\u094d\u0930\u0940\u0928\u0936\u0949\u091f \u0932\u094b")) }
+    @Test fun kholoNotMangled() { assertEquals("kholo", HindiNormal.latinize("\u0916\u094b\u0932\u094b")) }
+    @Test fun doubledUtterance() { assertEquals("screenshot lo", HindiNormal.dedupeRepeat("screenshot lo screenshot lo")) }
+    @Test fun singleNotDeduped() { assertEquals("ha ha ha", HindiNormal.dedupeRepeat("ha ha ha")) }
 }

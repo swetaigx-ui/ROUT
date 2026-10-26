@@ -64,7 +64,7 @@ class BackendProxyProvider(private val baseUrl: String, private val deviceToken:
                 body.put("images", arr)
             }
             val (code, text) = post(baseUrl.trimEnd('/') + "/v1/chat", body,
-                mapOf("Authorization" to "Bearer $deviceToken"))
+                mapOf("Authorization" to "Bearer $deviceToken"), timeoutMs = 40000)
             if (code in 200..299) {
                 val reply = JSONObject(text).optString("reply")
                 if (reply.isNotBlank()) AiResult.Reply(reply, name) else AiResult.Failure("Backend returned an empty reply")

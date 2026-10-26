@@ -190,7 +190,7 @@ class CommandRouter(
     }
 
     private suspend fun singleStep(raw: String): Pair<Boolean, String> {
-        val t = HindiNormal.latinize(raw.lowercase().trim())
+        val t = HindiNormal.dedupeRepeat(HindiNormal.latinize(raw.lowercase().trim()))
         val permNotified = object { var done = false }
         fun needPerm() { if (!permNotified.done) { permNotified.done = true; onPermissionNeeded(raw) } }
 
@@ -203,7 +203,7 @@ class CommandRouter(
         // Checked before every search rule so a named app opens instead of being searched.
         val openTarget = extractOpenTarget(t)
         if (openTarget != null &&
-            !openTarget.contains("search") && !openTarget.startsWith("youtube par") && !openTarget.startsWith("youtube pe") &&
+            !openTarget.contains("search") && !Regex("^(?:torch|flashlight|flash|batti|wifi|wi-fi|bluetooth|bt|hotspot|dnd|mobile data|internet|alarm|timer|screenshot)\\b").containsMatchIn(openTarget) && !openTarget.startsWith("youtube par") && !openTarget.startsWith("youtube pe") &&
             !openTarget.contains("\u0938\u0930\u094d\u091a")) {
             sayFirst("$openTarget khol rahi hoon")
             val r = DeviceActions.openApp(context, openTarget)
@@ -503,7 +503,7 @@ class CommandRouter(
 
                 // --- Extra one-tap settings panels ---
         when {
-            Regex("^airplane mode(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {
+            Regex("^airplane mode(?:\\s+(?:on|off|chalu|band))?(?:\\s+(?:karo|kar do))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "airplane"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
             }
             Regex("^battery settings(?:\\s+(?:kholo|khol do|open karo))?$").matches(t) -> {
@@ -551,19 +551,19 @@ class CommandRouter(
 
         // --- One-tap system panels (WiFi/Bluetooth/data/battery saver/display/hotspot) ---
         when {
-            Regex("^(?:wifi|wi-fi)(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {
+            Regex("^(?:wifi|wi-fi)(?:\\s+(?:on|off|chalu|band))?(?:\\s+(?:karo|kar do))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "wifi"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
             }
-            Regex("^(?:bluetooth|bt)(?:\\s+(?:on|off|karo|kar do|chalu|band))?$").matches(t) -> {
+            Regex("^(?:bluetooth|bt)(?:\\s+(?:on|off|chalu|band))?(?:\\s+(?:karo|kar do))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "bluetooth"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
             }
-            Regex("^(?:mobile data|internet)(?:\\s+(?:on|off|karo|kar do))?$").matches(t) -> {
+            Regex("^(?:mobile data|internet)(?:\\s+(?:on|off))?(?:\\s+(?:karo|kar do))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "internet"); return r.ok to r.message + " (Silent toggle Android kisi bhi app ko nahi deta.)"
             }
             Regex("^(?:battery saver|power saving)(?:\\s+(?:on|off|karo|kar do|lagao))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "batterysaver"); return r.ok to r.message
             }
-            Regex("^(?:dark mode|dark theme)(?:\\s+(?:on|off|karo|kar do))?$").matches(t) -> {
+            Regex("^(?:dark mode|dark theme)(?:\\s+(?:on|off))?(?:\\s+(?:karo|kar do))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "display"); return r.ok to r.message + " Dark mode wahi display settings mein hai - ek tap."
             }
             Regex("^(?:hotspot)(?:\\s+(?:on|off|karo|kar do|chalu))?$").matches(t) -> {
@@ -593,6 +593,9 @@ class CommandRouter(
         }
 
         // --- Spotify ---
+        Regex("^spotify\\s+(?:par|pe|mein)\\s+(?:search\\s*karo|search|dhundho)[:\\s]+(.+)$").find(t)?.let {
+            val r = DeviceActions.spotifyPlay(context, it.groupValues[1]); return r.ok to r.message
+        }
         Regex("^spotify\\s+(?:par|pe|mein)\\s+(.+?)\\s+(?:chalao|bajao|sunao|play\\s*karo|play)$").find(t)?.let {
             val r = DeviceActions.spotifyPlay(context, it.groupValues[1]); return r.ok to r.message
         }
@@ -684,10 +687,10 @@ class CommandRouter(
         if (t.contains("brightness")) { val r = DeviceActions.openBrightnessSettings(context); return r.ok to r.message }
 
         // --- Time / date / battery / network ---
-        if (Regex("(time|samay|kitne baje|kya time)").containsMatchIn(t)) {
+        if (Regex("\\b(time|samay|kitne baje|kya time)\\b").containsMatchIn(t)) {
             val r = DeviceActions.dateTime(); return r.ok to r.message
         }
-        if (Regex("(date|tarikh|tareekh|kaun sa din)").containsMatchIn(t)) {
+        if (Regex("\\b(date|tarikh|tareekh|kaun sa din)\\b").containsMatchIn(t)) {
             val r = DeviceActions.dateTime(); return r.ok to r.message
         }
         if (t.contains("battery")) { val r = DeviceActions.battery(context); return r.ok to r.message }
@@ -713,7 +716,7 @@ class CommandRouter(
 
         // --- Calendar / navigation ---
         if (t.contains("calendar")) { val r = DeviceActions.openCalendar(context); return r.ok to r.message }
-        Regex("(?:navigate|directions?|rasta)\\s*(?:to|ka|tak)?\\s*(.+)$").find(t)?.let {
+        Regex("\\b(?:navigate|directions?|rasta)\\b\\s*(?:(?:to|ka|tak|karo|kar do)\\b\\s*)*(.+)$").find(t)?.let {
             val dest = it.groupValues[1].trim()
             if (dest.isNotEmpty()) {
                 sayFirst("Navigation shuru kar rahi hoon")
@@ -813,6 +816,11 @@ class CommandRouter(
             }
         }
 
+        parseReminderAlt(t)?.let { (title, cal) ->
+            val id = db.tasks().insert(TaskItem(title = title, dueAt = cal.timeInMillis))
+            DeviceActions.scheduleReminder(context, id, title, cal.timeInMillis)
+            return true to "Reminder saved: $title - ${"%d:%02d".format(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))}. It fires as an inexact alarm, so it may arrive within a few minutes."
+        }
         Regex("(?:remind\\s*me|yaad\\s*dilao|yaad\\s*dilana)(?:\\s*to)?\\s+(.+?)\\s+(?:at|ko)\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?$").find(t)?.let { m ->
             val title = m.groupValues[1]
             var hour = m.groupValues[2].toInt()
@@ -848,7 +856,7 @@ class CommandRouter(
             return if (hits.isEmpty()) true to "Nothing found in history for \"${m.groupValues[1].trim()}\"."
             else true to "Found in your history: " + hits.take(3).joinToString("; ") { it.take(60) }
         }
-        if (Regex("(tasks?\\s*dikhao|show\\s*tasks|my\\s*tasks)").containsMatchIn(t)) {
+        if (Regex("(tasks?\\s*(?:dikhao|batao|list|sunao|padho)|show\\s*tasks|my\\s*tasks|mere\\s*tasks?|task\\s*list)").containsMatchIn(t)) {
             val tasks = db.tasks().tasks().first().filter { !it.done }
             return if (tasks.isEmpty()) true to "No pending tasks."
             else true to "Pending tasks: " + tasks.take(6).joinToString("; ") { it.title }
@@ -995,8 +1003,14 @@ class CommandRouter(
     }
 
     private fun friendlyFailure(reason: String): String = when {
-        reason.contains("unreachable", true) || reason.contains("timeout", true) ->
-            "ROUT AI ka server abhi jawab nahi de raha. Net check karke ek baar aur try karo - aksar doosri baar ho jaata hai."
+        reason.contains("UnknownHost") || reason.contains("ConnectException") || reason.contains("NoRouteToHost") ->
+            "Internet connect nahi ho raha (ROUT AI tak pahunch nahi paya). Net check karke dobara bolo."
+        reason.contains("SocketTimeout") || reason.contains("timeout", true) ->
+            "ROUT AI ko jawab dene mein bahut der lag gayi (server slow). Ek baar aur try karo."
+        reason.contains("SSL", true) || reason.contains("Certificate", true) ->
+            "Secure connection ban nahi paya (SSL error) - phone ka date/time aur net check karo."
+        reason.contains("unreachable", true) ->
+            "ROUT AI ka jawab app samajh nahi paya (${reason.substringAfter(": ", "error")}). Dobara try karo - agar baar baar ho to mujhe bata do."
         reason.contains("HTTP 401") || reason.contains("HTTP 403") ->
             "ROUT AI ka connection expire ho gaya lagta hai. Settings mein device dobara connect karo."
         reason.contains("HTTP 429") ->
@@ -1027,4 +1041,26 @@ class CommandRouter(
             }
         }
     }
+}
+
+
+/** "[mujhe] [kal|aaj] 5 baje dawai yaad dilana/dilao" and "5 baje ... ki yaad dilao" -> (title, due time). */
+internal fun parseReminderAlt(t: String, now: Calendar = Calendar.getInstance()): Pair<String, Calendar>? {
+    val m = Regex("^(?:mujhe\\s+)?(?:(kal|aaj)\\s+)?(?:(subah|shaam|raat|dopahar)\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm|baje)\\s+(?:ko\\s+)?(.+?)\\s+(?:ki\\s+)?(?:yaad\\s*dila(?:o|na)|remind(?:\\s*me)?)$").find(t) ?: return null
+    var hour = m.groupValues[3].toInt()
+    val minute = m.groupValues[4].ifEmpty { "0" }.toInt()
+    val mer = m.groupValues[5]
+    val part = m.groupValues[2]
+    if (mer == "pm" && hour < 12) hour += 12
+    if (mer == "am" && hour == 12) hour = 0
+    if (mer == "baje" && hour < 12 && (part == "shaam" || part == "raat" || part == "dopahar")) hour += 12
+    if (hour > 23 || minute > 59) return null
+    val title = m.groupValues[6].trim()
+    if (title.isEmpty()) return null
+    val cal = (now.clone() as Calendar).apply {
+        set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        if (m.groupValues[1] == "kal") add(Calendar.DAY_OF_YEAR, 1)
+        else if (timeInMillis <= now.timeInMillis) add(Calendar.DAY_OF_YEAR, 1)
+    }
+    return title to cal
 }
