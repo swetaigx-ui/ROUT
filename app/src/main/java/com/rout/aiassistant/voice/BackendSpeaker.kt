@@ -114,7 +114,7 @@ class BackendSpeaker(private val context: Context) {
             conn.disconnect()
             if (bytes.size < 200) return null
             val f = File(context.cacheDir, "rout_tts_${System.nanoTime()}.wav")
-            f.writeBytes(applyFades(bytes))
+            f.writeBytes(WavTail.process(bytes))
             f
         } catch (e: Exception) { null }
     }
@@ -164,7 +164,7 @@ class BackendSpeaker(private val context: Context) {
 
     private fun splitSentences(text: String): List<String> {
         val raw = text.trim().take(2000)
-        if (raw.length <= 220) return listOf(raw)
+        if (raw.length <= 400) return listOf(raw)
         val parts = raw.split(Regex("(?<=[.!?।])\u00A0?\\s+|(?<=[.!?।])\\s+"))
             .map { it.trim() }.filter { it.isNotEmpty() }
         if (parts.size <= 1) return listOf(raw)
@@ -172,7 +172,7 @@ class BackendSpeaker(private val context: Context) {
         val merged = mutableListOf<String>()
         var buf = StringBuilder()
         for (p in parts) {
-            if (buf.length + p.length > 220 && buf.isNotEmpty()) { merged.add(buf.toString()); buf = StringBuilder() }
+            if (buf.length + p.length > 400 && buf.isNotEmpty()) { merged.add(buf.toString()); buf = StringBuilder() }
             if (buf.isNotEmpty()) buf.append(' ')
             buf.append(p)
         }

@@ -1,5 +1,6 @@
 package com.rout.aiassistant
 
+import androidx.compose.ui.test.onRoot
 import android.graphics.Bitmap
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.navigation.compose.rememberNavController
@@ -66,6 +67,18 @@ class Rout071RenderTest {
             com.rout.aiassistant.ui.screens.SettingsScreen(vm, nav, scrollToEnd = true)
         }
         composeRule.waitForIdle()
+        repeat(6) { Thread.sleep(150); org.robolectric.shadows.ShadowLooper.idleMainLooper(); composeRule.waitForIdle() }
         shot("settings_end_071")
+        val tree = composeRule.onRoot().fetchSemanticsNode()
+        fun walk(n: androidx.compose.ui.semantics.SemanticsNode, out: MutableList<Pair<String, androidx.compose.ui.geometry.Rect>>) {
+            val t = (if (n.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Text)) n.config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString("") { it.text } else null)
+            if (t != null) out.add(t to n.boundsInRoot)
+            n.children.forEach { walk(it, out) }
+        }
+        val all = mutableListOf<Pair<String, androidx.compose.ui.geometry.Rect>>(); walk(tree, all)
+        val about = all.filter { it.first.contains("POWERED BY GYAN", true) || it.first.contains("About", true) }
+        val navLabel = all.last { it.first == "Connection" }
+        about.forEach { println("BOUNDS " + it.first.take(40) + " " + it.second) }
+        println("BOUNDS navLabel " + navLabel.second + " rootH=" + tree.boundsInRoot.height)
     }
 }

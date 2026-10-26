@@ -46,7 +46,10 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
     if (scrollToEnd || scrollFraction > 0f) {
         androidx.compose.runtime.LaunchedEffect(Unit) {
             androidx.compose.runtime.snapshotFlow { scrollState.maxValue }.first { it > 0 }
-            scrollState.scrollTo(if (scrollToEnd) scrollState.maxValue else (scrollState.maxValue * scrollFraction).toInt())
+            repeat(if (scrollToEnd) 4 else 1) {
+                scrollState.scrollTo(if (scrollToEnd) scrollState.maxValue else (scrollState.maxValue * scrollFraction).toInt())
+                if (scrollToEnd) kotlinx.coroutines.delay(150)
+            }
         }
     }
     val scope = rememberCoroutineScope()
@@ -425,7 +428,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
         com.rout.aiassistant.ui.components.GlassBox(
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 12.dp).fillMaxWidth(),
             radius = 28.dp,
-            fill = Color(0xF2101A2B)
+            fill = Color(0x9E101A2B)
         ) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 navItems.forEach { (icon, label, y) ->

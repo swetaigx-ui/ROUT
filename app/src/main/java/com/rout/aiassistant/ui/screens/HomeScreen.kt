@@ -336,7 +336,8 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                 }
             }
             // Bottom navigation (replaces the red-marked "POWERED BY GYAN" footer, per his video).
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            GlassBox(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp), radius = 24.dp, fill = Color(0x2E101A2B)) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 listOf(
                     Triple(Icons.Default.Home, "Home", ""),
                     Triple(Icons.Default.Edit, "Notes", "notes"),
@@ -355,6 +356,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                         Text(label, color = if (route.isEmpty()) RoutIce else RoutDim, fontSize = 9.sp, maxLines = 1)
                     }
                 }
+            }
             }
         }
 
