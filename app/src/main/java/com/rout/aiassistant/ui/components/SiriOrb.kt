@@ -53,7 +53,9 @@ fun SiriOrb(
     rms: Float,
     reducedMotion: Boolean,
     modifier: Modifier = Modifier,
-    size: Dp = 240.dp
+    size: Dp = 240.dp,
+    // Test/preview hook: pin the animation time instead of running the clock.
+    phaseOverride: Float? = null
 ) {
     val inf = rememberInfiniteTransition(label = "siri")
     val phase by inf.animateFloat(
@@ -72,7 +74,7 @@ fun SiriOrb(
         AssistantState.PROCESSING, AssistantState.EXECUTING -> 0.08f
         else -> 0.03f
     }
-    val t = if (reducedMotion) 4f else phase * speed
+    val t = if (phaseOverride != null) phaseOverride * speed else if (reducedMotion) 4f else phase * speed
     val palette = if (state == AssistantState.ERROR) SiriErrorPalette else SiriPalette
 
     Canvas(modifier.size(size)) {

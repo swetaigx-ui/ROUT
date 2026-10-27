@@ -87,11 +87,12 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
     }
     var showMicRationale by remember { mutableStateOf(false) }
+    var pendingMicAction by remember { mutableStateOf<() -> Unit>({ vm.onMicTap() }) }
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         micGranted = granted
-        if (granted) vm.onMicTap() else vm.setBanner("Microphone denied. Text input still works.")
+        if (granted) pendingMicAction() else vm.setBanner("Microphone denied. Text input still works.")
     }
-    val micTap = { if (!micGranted) showMicRationale = true else vm.onMicTap() }
+    val micTap = { if (!micGranted) { pendingMicAction = { vm.onMicTap() }; showMicRationale = true } else vm.onMicTap() }
 
     // Auto-scroll only when already near the bottom - never yank the user upward.
     LaunchedEffect(messages.size) {
@@ -219,7 +220,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                     style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.weight(1f))
                 if (liveState != "live" && liveState != "connecting") {
                     Text("LIVE", color = RoutCyan, style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.clickable { if (!micGranted) showMicRationale = true else vm.toggleLive() }.padding(horizontal = 8.dp, vertical = 4.dp))
+                        modifier = Modifier.clickable { if (!micGranted) { pendingMicAction = { vm.toggleLive() }; showMicRationale = true } else vm.toggleLive() }.padding(horizontal = 8.dp, vertical = 4.dp))
                 }
                 if (state != AssistantState.IDLE) {
                     Text("STOP", color = RoutError, style = MaterialTheme.typography.labelSmall,
@@ -273,6 +274,35 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                         "ROUT uses the microphone only when you tap the mic or enable the Hey ROUT session. " +
                         "Speech is processed by Android's speech service. ROUT does not store raw recordings. " +
                         "You can revoke this anytime in Android Settings.",
+                        color = RoutDim
+                    )
+                },
+                containerColor = RoutGraphite
+            )
+        }
+
+        // Floating LIVE overlay permission: asked explicitly, never drawn silently.
+        val overlayPrompt by vm.overlayPrompt.collectAsState()
+        if (overlayPrompt) {
+            AlertDialog(
+                onDismissRequest = { vm.dismissOverlayPrompt() },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vm.dismissOverlayPrompt()
+                        context.startActivity(
+                            android.content.Intent(
+                                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:" + context.packageName)
+                            )
+                        )
+                    }) { Text("Open settings", color = RoutCyan) }
+                },
+                dismissButton = { TextButton(onClick = { vm.dismissOverlayPrompt() }) { Text("Later", color = RoutDim) } },
+                title = { Text("Floating LIVE", color = RoutText) },
+                text = {
+                    Text(
+                        "Back dabaane ke baad screen par tairta orb dikhane ke liye 'Display over other apps' permission chahiye. " +
+                        "Bina iske LIVE phir bhi chalega - notification mein STOP button rahega.",
                         color = RoutDim
                     )
                 },

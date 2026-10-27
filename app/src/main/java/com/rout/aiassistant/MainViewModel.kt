@@ -63,6 +63,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setUserName(v: String) { viewModelScope.launch { prefs.setUserName(v) } }
     val personaMode = prefs.personaMode.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val warbyEmotions = prefs.warbyEmotions.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    val deviceVoiceEnabled = prefs.deviceVoiceEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    // One-shot prompt: floating LIVE needs the overlay permission; never drawn silently.
+    private val _overlayPrompt = MutableStateFlow(false)
+    val overlayPrompt: StateFlow<Boolean> = _overlayPrompt
+    fun dismissOverlayPrompt() { _overlayPrompt.value = false }
 
     // Warby's current emotion, detected from the user's actual words (his warby-orb.js rules).
     val emotion = kotlinx.coroutines.flow.MutableStateFlow<com.rout.aiassistant.ui.components.WarbyEmotion?>(null)
@@ -99,6 +105,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         e.deviceTokenProvider = { enrollment.deviceToken }
         viewModelScope.launch { backendUrl.collect { e.backendUrl = it } }
         viewModelScope.launch { prefs.voiceName.collect { e.voiceName = it } }
+        viewModelScope.launch { prefs.deviceVoiceEnabled.collect { e.deviceVoiceEnabled = it } }
     }
     val assistantState: StateFlow<AssistantState> = engine.state
     val rms: StateFlow<Float> = engine.rms
@@ -126,6 +133,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ) {
             ContextCompat.startForegroundService(app, Intent(app, com.rout.aiassistant.service.LiveOverlayService::class.java))
         }
+        // Floating orb needs an explicit user grant of "display over other apps".
+        // Without it LIVE still runs (in-app + notification with STOP); we ask, never draw silently.
+        if (!android.provider.Settings.canDrawOverlays(app)) _overlayPrompt.value = true
         viewModelScope.launch {
             live.start(backendUrl.value, enrollment.deviceToken ?: "", personaMode.value, prefs.voiceName.first())
         }

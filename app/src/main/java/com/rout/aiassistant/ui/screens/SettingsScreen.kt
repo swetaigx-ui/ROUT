@@ -230,11 +230,17 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
                 // --- ROUT voice ---
                 val currentVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
+                val deviceVoiceOn by vm.deviceVoiceEnabled.collectAsState()
                 SettingsCard("ROUT voice", trailing = currentVoice, onY = { sectionOffsets["ROUT voice"] = it }) {
                     Text(
                         "Natural backend voice for spoken replies (needs a connected device). Persona ka apna voice hota hai - yahan se bhi badal sakte ho.",
                         color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp
                     )
+                    RefSwitchRow(
+                        "Device voice (robotic)",
+                        "Off: natural voice na mile to kuch nahi bajta, jawab text mein milta hai. On karne par robotic device voice bhi bol sakti hai.",
+                        deviceVoiceOn
+                    ) { scope.launch { vm.prefs.setDeviceVoiceEnabled(it) } }
                     Text("Female", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Achernar", "Aoede", "Despina", "Sulafat", "Zephyr").forEach { v ->

@@ -23,6 +23,7 @@ class Prefs(private val context: Context) {
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         val DEV_AI_ENABLED = booleanPreferencesKey("dev_ai_enabled")
         val VOICE_NAME = stringPreferencesKey("voice_name")
+        val DEVICE_VOICE_ENABLED = booleanPreferencesKey("device_voice_enabled")
         val PERSONA_MODE = stringPreferencesKey("persona_mode")
         val USER_NAME = stringPreferencesKey("user_name")
         val WARBY_EMOTIONS = booleanPreferencesKey("warby_emotions")
@@ -73,6 +74,10 @@ class Prefs(private val context: Context) {
     suspend fun setReducedMotion(v: Boolean) = context.ds.edit { it[REDUCED_MOTION] = v }
     suspend fun setDevAiEnabled(v: Boolean) = context.ds.edit { it[DEV_AI_ENABLED] = v }
     suspend fun setVoiceName(v: String) = context.ds.edit { it[VOICE_NAME] = v }
+    // Robotic on-device voice. Off by default: Gyan rejected the robotic voice
+    // (2026-10-27 voice note), so it plays only when he explicitly turns this on.
+    val deviceVoiceEnabled: Flow<Boolean> = context.ds.data.map { it[DEVICE_VOICE_ENABLED] ?: false }
+    suspend fun setDeviceVoiceEnabled(v: Boolean) = context.ds.edit { it[DEVICE_VOICE_ENABLED] = v }
     suspend fun setPersonaMode(v: String) = context.ds.edit { it[PERSONA_MODE] = v }
     suspend fun setWarbyEmotions(v: Boolean) = context.ds.edit { it[WARBY_EMOTIONS] = v }
     suspend fun setTranslateMode(v: Boolean) = context.ds.edit { it[TRANSLATE_MODE] = v }

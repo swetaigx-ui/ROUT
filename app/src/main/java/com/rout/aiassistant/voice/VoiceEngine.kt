@@ -86,8 +86,15 @@ class VoiceEngine(
 
     fun setState(s: AssistantState) { _state.value = s }
 
-    /** Natural backend voice. Set when the device is enrolled; null = on-device TTS only. */
+    /** Natural backend voice. Set when the device is enrolled. */
     var backendSpeaker: BackendSpeaker? = null
+    /**
+     * Explicit user opt-in for the robotic on-device voice (Settings > Voice).
+     * Gyan rejected the robotic voice (2026-10-27 voice note), so when this is
+     * false the device voice NEVER plays: not as a backend-failure fallback and
+     * not when no backend is configured. Honest status + text reply instead.
+     */
+    var deviceVoiceEnabled: Boolean = false
     var backendUrl: String = ""
     var voiceName: String = "Achernar"
     var deviceTokenProvider: () -> String = { "" }
@@ -122,10 +129,10 @@ class VoiceEngine(
                     // Part of the reply already played in the natural voice: do not repeat it in another voice.
                     _voiceMode.value = "natural"; _voiceDetail.value = "Natural voice cut off (" + (bs.lastFailure ?: "unknown") + ")"
                 } else {
-                    // Gyan's decision (2026-10-27, voice note): the robotic device voice
-                    // must NOT auto-play as a fallback. Natural voice unavailable ->
-                    // honest status line only; the text reply stays in chat. Device TTS
-                    // remains only where no backend is configured at all.
+                    // Gyan's decision (2026-10-27, voice note via main): the robotic
+                    // device voice must NOT auto-play as a fallback. Natural voice
+                    // unavailable -> honest status line only; the text reply stays in
+                    // chat. Device voice plays only via explicit Settings opt-in.
                     _voiceMode.value = "unavailable"
                     _voiceDetail.value = "Natural voice unavailable: " + (bs.lastFailure ?: "unknown") + " - jawab text mein hai (device voice off)"
                 }
@@ -133,12 +140,20 @@ class VoiceEngine(
                 if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)
                 drainSpeakQueue()
             }
-        } else {
+        } else if (deviceVoiceEnabled) {
+            // On-device voice only because the user explicitly enabled it.
             // On-device TTS queues natively (QUEUE_ADD keeps the order).
             while (true) {
                 val next = speakQueue.poll() ?: break
                 speakOnDevice(next, queue = true)
             }
+        } else {
+            // No backend voice AND no device-voice opt-in: stay silent, be honest.
+            // The text reply stays in chat; nothing plays in the robotic voice.
+            speakQueue.clear()
+            _voiceMode.value = "unavailable"
+            _voiceDetail.value = "Voice off: natural voice unavailable - jawab text mein hai (robotic device voice off; Settings > Voice se chalu kar sakte ho)"
+            if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)
         }
     }
 
