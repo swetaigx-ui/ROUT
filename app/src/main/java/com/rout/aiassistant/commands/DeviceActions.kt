@@ -489,9 +489,10 @@ object DeviceActions {
 
     fun dateTime(): ActionResult {
         val now = Date()
+        val tz = java.util.TimeZone.getDefault().getDisplayName(false, java.util.TimeZone.SHORT, Locale.getDefault())
         val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(now)
         val date = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(now)
-        return ActionResult(true, "It's $time, $date")
+        return ActionResult(true, "It's $time $tz, $date")
     }
 
     fun battery(context: Context): ActionResult {

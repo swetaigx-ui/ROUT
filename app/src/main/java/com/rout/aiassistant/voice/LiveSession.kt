@@ -51,7 +51,7 @@ class LiveSession(private val appContext: Context) {
 
     /** Completed user utterance (per turn) for local device-command execution. */
     var onUserTurn: ((String) -> Unit)? = null
-    private val userBuf = StringBuilder()
+    private val turnFlow = LiveTurnFlow()
 
     private var ws: WebSocket? = null
     private var record: AudioRecord? = null
@@ -87,7 +87,7 @@ class LiveSession(private val appContext: Context) {
             _state.value = "failed"; _error.value = "Live needs an enrolled device."; return
         }
         closed = false; ready = false; running = true
-        userBuf.setLength(0); _heard.value = ""
+        turnFlow.resetBuffer(); _heard.value = ""
         _state.value = "connecting"; _error.value = null; _transcript.value = ""
         val req = Request.Builder().url(wsUrl(backendUrl, persona, voice))
             .header("Sec-WebSocket-Protocol", "rout-live, bearer.$deviceToken").build()
@@ -119,14 +119,13 @@ class LiveSession(private val appContext: Context) {
             // What the model heard from the user's mic - drives the on-screen
             // "Sun raha:" line and the per-turn local command execution.
             sc.optJSONObject("inputTranscription")?.optString("text")?.let {
-                userBuf.append(it); _heard.value = userBuf.toString().takeLast(200)
+                turnFlow.onTranscription(it); _heard.value = turnFlow.currentHeard()
             }
             sc.optJSONObject("outputTranscription")?.optString("text")?.let { _transcript.value = (_transcript.value + it).takeLast(600) }
             if (sc.optBoolean("turnComplete")) {
                 _transcript.value = ""; _speaking.value = false
-                val said = userBuf.toString().trim()
-                userBuf.setLength(0); _heard.value = ""
-                if (said.isNotEmpty()) onUserTurn?.invoke(said)
+                _heard.value = ""
+                turnFlow.onTurnComplete(System.currentTimeMillis())?.let { said -> onUserTurn?.invoke(said) }
             }
         } catch (_: Exception) {}
     }

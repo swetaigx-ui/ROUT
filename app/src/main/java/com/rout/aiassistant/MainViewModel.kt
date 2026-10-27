@@ -148,16 +148,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * commands execute via the local router. General conversation is NOT routed -
      * the LIVE model already answered it in its own voice.
      */
-    // Dedup: transcription retries/interruptions can deliver the same utterance
-    // twice - a repeated command must not repeat the action.
-    @Volatile private var lastLiveUtter: String = ""
-    @Volatile private var lastLiveUtterAt: Long = 0
-
+    // Assembly + dedup live in LiveTurnFlow (LiveSession): proto ordering does
+    // not guarantee transcription-before-turnComplete, and retries can re-deliver
+    // an utterance; the flow buffers late tails and suppresses 8s duplicates.
     internal fun onLiveUserTurn(utter: String) {
         if (utter.isBlank()) return
-        val now = System.currentTimeMillis()
-        if (utter == lastLiveUtter && now - lastLiveUtterAt < 8000) return
-        lastLiveUtter = utter; lastLiveUtterAt = now
         viewModelScope.launch {
             val cid = conversationId.value
             if (_confirm.value != null) {

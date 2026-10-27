@@ -44,4 +44,25 @@ class LiveLocalCommandTest {
         val reply = router.handle("tumhara din kaisa ja raha hai")
         assertTrue(reply.isNotBlank())
     }
+
+    @Test fun truncatedFragmentDoesNotDispatch() = runBlocking {
+        // A truncated transcription tail ("cam" of "camera kholo") must not
+        // dispatch any device action in LIVE localOnly mode.
+        val reply = router.handle("cam", localOnly = true)
+        assertEquals("", reply)
+    }
+
+    @Test fun devanagariTranscriptionStillRoutesLocally() = runBlocking {
+        // Live inputTranscription returned Devanagari in the bounded session
+        // test; latinize() must still route it to the local time handler.
+        val reply = router.handle("टाइम बताओ, अभी कितने बजे हैं?", localOnly = true)
+        assertTrue(reply.isNotBlank())
+    }
+
+    @Test fun timeAnswerIsDeviceGroundedWithTimezone() = runBlocking {
+        val reply = router.handle("kitne baje", localOnly = true)
+        assertTrue(reply.isNotBlank())
+        // Grounded device time with an explicit timezone, never model-invented.
+        assertTrue(Regex("\\d{1,2}:\\d{2} [AP]M [A-Z]{2,5}").containsMatchIn(reply))
+    }
 }
