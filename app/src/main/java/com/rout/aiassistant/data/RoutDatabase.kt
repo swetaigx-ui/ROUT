@@ -19,8 +19,11 @@ abstract class RoutDatabase : RoomDatabase() {
 
     companion object {
         @Volatile private var instance: RoutDatabase? = null
+        /** Unit tests swap in an in-memory DB before building a ViewModel. */
+        @Volatile var testInstance: RoutDatabase? = null
+
         fun get(context: Context): RoutDatabase =
-            instance ?: synchronized(this) {
+            testInstance ?: instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(context.applicationContext, RoutDatabase::class.java, "rout.db")
                     .addMigrations(object : androidx.room.migration.Migration(1, 2) {
                         override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {

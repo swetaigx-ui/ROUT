@@ -2,8 +2,12 @@ package com.rout.aiassistant
 
 import android.graphics.Bitmap
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertTrue
@@ -12,12 +16,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.io.FileOutputStream
 
 /** 0.7.6 renders: clean Home (no greeting card) + dock liquid-touch frames. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w360dp-h800dp-xxhdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class Rout076RenderTest {
     @get:Rule val composeRule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
@@ -79,11 +85,19 @@ class Rout076RenderTest {
     }
 
     @Test fun dockLiquidTouchFrames() {
-        val current = mutableStateOf("settings")
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             val nav = rememberNavController()
-            com.rout.aiassistant.ui.components.RoutDock(current.value, nav)
+            androidx.navigation.compose.NavHost(nav, startDestination = "settings") {
+                composable("settings") {
+                    com.rout.aiassistant.ui.components.RoutBackground {
+                        com.rout.aiassistant.ui.components.RoutDock("settings", nav,
+                            androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(16.dp))
+                    }
+                }
+                composable("home") {}
+                composable("chat") {}
+            }
         }
         composeRule.mainClock.advanceTimeBy(500)
         shot("dock_idle_076")
@@ -97,6 +111,14 @@ class Rout076RenderTest {
         shot("dock_touch_home_076")
         composeRule.mainClock.advanceTimeBy(400)
         shot("dock_touch_home_settled_076")
+        // Release over the CURRENT tab (Settings) so no navigation fires and the
+        // liquid settle back is captured on the dock itself.
+        val setB = composeRule.onNodeWithText("Settings").fetchSemanticsNode().boundsInRoot
+        composeRule.onRoot().performTouchInput {
+            moveTo(androidx.compose.ui.geometry.Offset(setB.left + setB.width / 2, setB.top + setB.height / 2))
+        }
+        composeRule.mainClock.advanceTimeBy(80)
+        shot("dock_touch_drag_settings_076")
         composeRule.onRoot().performTouchInput { up() }
         composeRule.mainClock.advanceTimeBy(200) // mid liquid-settle back
         shot("dock_release_settle_076")
