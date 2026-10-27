@@ -45,8 +45,7 @@ import com.rout.aiassistant.data.Message
 import com.rout.aiassistant.ui.components.GlassBox
 import com.rout.aiassistant.ui.components.GlassFill
 import com.rout.aiassistant.ui.components.GlassFillStrong
-import com.rout.aiassistant.ui.components.WarbyOrb
-import com.rout.aiassistant.ui.components.RubyOrb
+import com.rout.aiassistant.ui.components.SiriOrb
 import com.rout.aiassistant.ui.components.RoutDock
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -175,7 +174,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                 verticalArrangement = Arrangement.Center
             ) {
                 Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
-                    RubyOrb(state = state, rms = rms, reducedMotion = reducedMotion, size = 220.dp)
+                    SiriOrb(state = state, rms = rms, reducedMotion = reducedMotion, size = 220.dp)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(

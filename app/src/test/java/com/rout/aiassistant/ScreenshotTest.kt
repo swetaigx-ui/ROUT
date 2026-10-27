@@ -20,7 +20,7 @@ import java.io.File
 import java.io.FileOutputStream
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
-import com.rout.aiassistant.ui.components.OrbView
+import com.rout.aiassistant.ui.components.SiriOrb
 import com.rout.aiassistant.ui.theme.RoutBlack
 import com.rout.aiassistant.ui.theme.RoutTheme
 import com.rout.aiassistant.voice.AssistantState
@@ -64,16 +64,16 @@ class ScreenshotTest {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OrbView(state = AssistantState.IDLE, rms = 0f, reducedMotion = true, size = 150.dp)
-                        OrbView(state = AssistantState.LISTENING, rms = 6f, reducedMotion = true, size = 150.dp)
+                        SiriOrb(state = AssistantState.IDLE, rms = 0f, reducedMotion = true, size = 150.dp)
+                        SiriOrb(state = AssistantState.LISTENING, rms = 6f, reducedMotion = true, size = 150.dp)
                     }
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OrbView(state = AssistantState.SPEAKING, rms = 0f, reducedMotion = true, size = 150.dp)
-                        OrbView(state = AssistantState.ERROR, rms = 0f, reducedMotion = true, size = 150.dp)
+                        SiriOrb(state = AssistantState.SPEAKING, rms = 0f, reducedMotion = true, size = 150.dp)
+                        SiriOrb(state = AssistantState.ERROR, rms = 0f, reducedMotion = true, size = 150.dp)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text("ROUT orb states: idle / listening / speaking / error",
+                    Text("ROUT Siri orb states: idle / listening / speaking / error",
                         style = MaterialTheme.typography.bodyMedium)
                 }
             }

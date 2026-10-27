@@ -122,7 +122,12 @@ class VoiceEngine(
                     // Part of the reply already played in the natural voice: do not repeat it in another voice.
                     _voiceMode.value = "natural"; _voiceDetail.value = "Natural voice cut off (" + (bs.lastFailure ?: "unknown") + ")"
                 } else {
-                    speakOnDevice(next, reason = bs.lastFailure ?: "unknown")
+                    // Gyan's decision (2026-10-27, voice note): the robotic device voice
+                    // must NOT auto-play as a fallback. Natural voice unavailable ->
+                    // honest status line only; the text reply stays in chat. Device TTS
+                    // remains only where no backend is configured at all.
+                    _voiceMode.value = "unavailable"
+                    _voiceDetail.value = "Natural voice unavailable: " + (bs.lastFailure ?: "unknown") + " - jawab text mein hai (device voice off)"
                 }
                 backendSpeaking = false
                 if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)

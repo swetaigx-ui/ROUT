@@ -89,7 +89,7 @@ class Rout071RenderTest {
             val t0 = System.currentTimeMillis()
             while (System.currentTimeMillis() - t0 < 30000) {
                 composeRule.mainClock.advanceTimeBy(200); Thread.sleep(50); org.robolectric.shadows.ShadowLooper.idleMainLooper(); composeRule.waitForIdle()
-                val nodes = composeRule.onAllNodesWithText("ROUT AI - POWERED BY GYAN").fetchSemanticsNodes()
+                val nodes = composeRule.onAllNodesWithText("POWERED BY GYAN", substring = true, ignoreCase = true).fetchSemanticsNodes()
                 if (nodes.isNotEmpty() && nodes[0].boundsInRoot.bottom < 2300f) break
             }
         }
@@ -102,7 +102,7 @@ class Rout071RenderTest {
         }
         val all = mutableListOf<Pair<String, androidx.compose.ui.geometry.Rect>>(); walk(tree, all)
         val about = all.filter { it.first.contains("POWERED BY GYAN", true) || it.first.contains("About", true) }
-        val navLabel = all.last { it.first == "SETTINGS" }
+        val navLabel = all.last { it.first == "Settings" }
         about.forEach { println("BOUNDS " + it.first.take(40) + " " + it.second) }
         val credit = all.first { it.first.contains("POWERED BY GYAN") }
         org.junit.Assert.assertTrue("credit line must clear the nav bar", credit.second.bottom < navLabel.second.top - 40f)

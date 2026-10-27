@@ -105,13 +105,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val partial: StateFlow<String> = engine.partial
     val voiceMode: StateFlow<String> = engine.voiceMode
     val voiceDetail: StateFlow<String> = engine.voiceDetail
-    val live = com.rout.aiassistant.voice.LiveSession()
+    // Application-owned (see RoutApplication): survives Back so the floating LIVE UI keeps working.
+    val live: com.rout.aiassistant.voice.LiveSession get() = RoutApplication.live
     val liveState: StateFlow<String> = live.state
     val liveTranscript: StateFlow<String> = live.transcript
     val liveError: StateFlow<String?> = live.error
     fun toggleLive() {
-        if (live.state.value == "live" || live.state.value == "connecting") { live.stop(); return }
+        val app = getApplication<Application>()
+        if (live.state.value == "live" || live.state.value == "connecting") {
+            live.stop()
+            app.startService(Intent(app, com.rout.aiassistant.service.LiveOverlayService::class.java)
+                .setAction(com.rout.aiassistant.service.LiveOverlayService.ACTION_STOP))
+            return
+        }
         engine.stopSpeaking(); engine.stopListening()
+        // Mic foreground service must start while the app is on screen: it keeps the
+        // mic legally alive for LIVE after Back and hosts the floating orb UI.
+        if (ContextCompat.checkSelfPermission(app, android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            ContextCompat.startForegroundService(app, Intent(app, com.rout.aiassistant.service.LiveOverlayService::class.java))
+        }
         viewModelScope.launch {
             live.start(backendUrl.value, enrollment.deviceToken ?: "", personaMode.value, prefs.voiceName.first())
         }
@@ -365,7 +379,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBanner(text: String?) { _banner.value = text }
 
-    override fun onCleared() { live.stop(); engine.destroy() }
+    // LIVE intentionally NOT stopped here: it keeps running (with the floating orb)
+    // after Back until the user ends it. Engine (tap-to-talk) still tears down.
+    override fun onCleared() { engine.destroy() }
     /** Entry point for an explicit photo/PDF share into ROUT (system share sheet). */
     fun handleShared(uri: android.net.Uri, mimeType: String?) {
         viewModelScope.launch {

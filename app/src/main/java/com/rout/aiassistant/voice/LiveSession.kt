@@ -33,6 +33,9 @@ class LiveSession {
     val transcript: StateFlow<String> = _transcript
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
+    private val _speaking = MutableStateFlow(false)
+    /** True while model audio is arriving - drives the floating orb's glow. */
+    val speaking: StateFlow<Boolean> = _speaking
 
     private var ws: WebSocket? = null
     private var record: AudioRecord? = null
@@ -85,15 +88,15 @@ class LiveSession {
             val m = JSONObject(text)
             if (m.has("setupComplete")) { ready = true; _state.value = "live"; startMic(); return }
             val sc = m.optJSONObject("serverContent") ?: return
-            if (sc.optBoolean("interrupted")) track?.pause().also { track?.flush(); track?.play() }
+            if (sc.optBoolean("interrupted")) { _speaking.value = false; track?.pause().also { track?.flush(); track?.play() } }
             sc.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
                 for (i in 0 until parts.length()) {
                     val d = parts.getJSONObject(i).optJSONObject("inlineData")?.optString("data").orEmpty()
-                    if (d.isNotEmpty()) play(Base64.decode(d, Base64.DEFAULT))
+                    if (d.isNotEmpty()) { _speaking.value = true; play(Base64.decode(d, Base64.DEFAULT)) }
                 }
             }
             sc.optJSONObject("outputTranscription")?.optString("text")?.let { _transcript.value = (_transcript.value + it).takeLast(600) }
-            if (sc.optBoolean("turnComplete")) _transcript.value = ""
+            if (sc.optBoolean("turnComplete")) { _transcript.value = ""; _speaking.value = false }
         } catch (_: Exception) {}
     }
 
@@ -138,6 +141,7 @@ class LiveSession {
     fun stop() {
         if (closed && _state.value != "connecting") return
         running = false; ready = false; closed = true
+        _speaking.value = false
         try { ws?.close(1000, "bye") } catch (_: Exception) {}
         ws = null
         try { record?.stop() } catch (_: Exception) {}

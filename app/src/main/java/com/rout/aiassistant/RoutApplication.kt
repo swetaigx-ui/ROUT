@@ -7,6 +7,14 @@ import android.app.NotificationManager
 class RoutApplication : Application() {
     companion object {
         @Volatile var foreground: Boolean = false
+
+        /**
+         * The LIVE session lives on the Application, not the Activity ViewModel:
+         * Gyan's ask (2026-10-27) is that starting LIVE and pressing Back leaves a
+         * floating UI that keeps listening - so leaving the screen must not kill it.
+         * It stops only on an explicit toggle/STOP or a connection failure.
+         */
+        val live: com.rout.aiassistant.voice.LiveSession by lazy { com.rout.aiassistant.voice.LiveSession() }
     }
 
     override fun onCreate() {

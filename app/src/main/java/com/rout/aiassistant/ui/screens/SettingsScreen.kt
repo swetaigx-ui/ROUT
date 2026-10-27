@@ -5,9 +5,12 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -17,12 +20,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,20 +35,38 @@ import com.rout.aiassistant.MainViewModel
 import com.rout.aiassistant.ai.Personas
 import com.rout.aiassistant.commands.MediaControl
 import com.rout.aiassistant.service.RoutAccessibilityService
-import com.rout.aiassistant.ui.components.WarbyEmotion
-import com.rout.aiassistant.ui.components.WarbyOrb
+import com.rout.aiassistant.ui.components.GlassBox
+import com.rout.aiassistant.ui.components.RefIcons
+import com.rout.aiassistant.ui.components.RgbFlowText
+import com.rout.aiassistant.ui.components.RoutBackground
+import com.rout.aiassistant.ui.components.RoutDock
 import com.rout.aiassistant.ui.theme.*
-import com.rout.aiassistant.voice.AssistantState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+private val RefInk = Color(0xFFEEECF8)
+private val RefMuted = Color(0xFFA3A0BD)
+private val RefDim = Color(0xFF7F7B99)
+private val RefAccent = Color(0xFF67F0FF)
+private val RefOk = Color(0xFF6FF0B6)
+private val RefDanger = Color(0xFFFF9DB5)
+private val RefCardBg = Color(0xC2161328)
+private val RefCardLine = Color(0x17FFFFFF)
+
+/**
+ * Settings, ditto of Gyan's reference page (file-ba01d872.html, 2026-10-27):
+ * sticky glass topbar + section subbar with a jump dropdown, dark glass cards,
+ * pill chips with a violet-cyan selected gradient, green-to-cyan switches,
+ * gradient primary buttons, and the flowing-RGB "Powered by Gyan" credit.
+ * Every control below is wired to a REAL preference or action - nothing is a demo.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean = false, scrollFraction: Float = 0f) {
     val scrollState = rememberScrollState()
     if (scrollToEnd || scrollFraction > 0f) {
-        androidx.compose.runtime.LaunchedEffect(Unit) {
-            androidx.compose.runtime.snapshotFlow { scrollState.maxValue }.first { it > 0 }
+        LaunchedEffect(Unit) {
+            snapshotFlow { scrollState.maxValue }.first { it > 0 }
             repeat(if (scrollToEnd) 20 else 1) {
                 scrollState.scrollTo(if (scrollToEnd) scrollState.maxValue else (scrollState.maxValue * scrollFraction).toInt())
                 if (scrollToEnd) kotlinx.coroutines.delay(150)
@@ -64,396 +84,493 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
     val reducedMotion by vm.reducedMotion.collectAsState()
     val devAiEnabled by vm.devAiEnabled.collectAsState()
     val currentPersona by vm.personaMode.collectAsState()
-    val warbyEmotions by vm.warbyEmotions.collectAsState()
 
-    var yConn by remember { mutableStateOf(0f) }
-    var yPersona by remember { mutableStateOf(0f) }
-    var yVoice by remember { mutableStateOf(0f) }
-    var yControls by remember { mutableStateOf(0f) }
-    var yAppear by remember { mutableStateOf(0f) }
-    var yPrivacy by remember { mutableStateOf(0f) }
-    var yAbout by remember { mutableStateOf(0f) }
+    val sectionOffsets = remember { mutableStateMapOf<String, Float>() }
+    val sectionAnchorPx = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
+    val currentSection by remember {
+        derivedStateOf {
+            // Fully at the bottom -> the last section owns the view.
+            if (scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue - 8) return@derivedStateOf "About ROUT"
+            val s = scrollState.value + sectionAnchorPx
+            sectionOffsets.entries.filter { it.value <= s }.maxByOrNull { it.value }?.key ?: "Naam"
+        }
+    }
+    var menuOpen by remember { mutableStateOf(false) }
     var backendInput by remember(backendUrl) { mutableStateOf(backendUrl) }
     var cityInput by remember(weatherCity) { mutableStateOf(weatherCity) }
     var devKeyInput by remember { mutableStateOf("") }
+    val userNameSaved by vm.userName.collectAsState()
+    var nameInput by remember(userNameSaved) { mutableStateOf(userNameSaved) }
 
-    ScreenScaffold(title = "Settings", nav = nav) {
-      Box(Modifier.fillMaxSize()) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(scrollState).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Name (used in the Home greeting)
-            val userNameSaved by vm.userName.collectAsState()
-            var nameInput by remember(userNameSaved) { mutableStateOf(userNameSaved) }
-            Section("Naam") {
-                OutlinedTextField(
-                    value = nameInput, onValueChange = { nameInput = it.take(30); vm.setUserName(it.take(30)) },
-                    label = { Text("Aapka naam (Home greeting mein)") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(), colors = fieldColors()
-                )
+    fun goHome() = nav.navigate("home") { popUpTo("home") { inclusive = false }; launchSingleTop = true }
+
+    RoutBackground {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+
+            // ---- Sticky glass header: topbar + section subbar ----
+            Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlassBox(Modifier.fillMaxWidth(), radius = 24.dp) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Settings", color = RefInk, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.01).sp)
+                            Text("ROUT \u00B7 v${BuildConfig.VERSION_NAME}", color = RefDim, fontSize = 12.sp)
+                        }
+                        RefIconButton(RefIcons.X, "Close settings") { goHome() }
+                    }
+                }
+                GlassBox(Modifier.fillMaxWidth(), radius = 24.dp) {
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 9.dp, top = 9.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Section", color = RefDim, fontSize = 11.sp)
+                            Text(currentSection, color = RefInk, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Box {
+                            RefIconButton(RefIcons.List, "Show all sections", active = menuOpen) { menuOpen = !menuOpen }
+                            DropdownMenu(
+                                expanded = menuOpen, onDismissRequest = { menuOpen = false },
+                                containerColor = Color(0xF7100D1F),
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier.border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(20.dp))
+                            ) {
+                                listOf(
+                                    "Naam" to RefIcons.User, "Connection" to RefIcons.Link,
+                                    "ROUT persona" to RefIcons.Spark, "ROUT voice" to RefIcons.Mic,
+                                    "Quick controls" to RefIcons.Zap, "Permissions and privacy" to RefIcons.Shield,
+                                    "Routines" to RefIcons.Repeat, "Weather" to RefIcons.Cloud,
+                                    "Screens" to RefIcons.Layers, "About ROUT" to RefIcons.Info
+                                ).forEach { (title, icon) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(icon, null, tint = RefAccent, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(12.dp))
+                                                Text(title, color = RefInk, fontSize = 14.sp)
+                                            }
+                                        },
+                                        onClick = {
+                                            menuOpen = false
+                                            val y = sectionOffsets[title] ?: return@DropdownMenuItem
+                                            scope.launch { scrollState.animateScrollTo((y - 8f).coerceAtLeast(0f).toInt()) }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            // --- Connection (live status) ---
-            val enrolled = vm.isDeviceEnrolled()
-            Section("Connection", accent = Color(0xFF4DFFA6), onY = { yConn = it }) {
-                Text(
-                    "Recommended: ROUT backend (source included, folder backend/). Your AI key stays on the server - never inside the app.",
-                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
-                )
-                OutlinedTextField(
-                    value = backendInput, onValueChange = { backendInput = it },
-                    label = { Text("Backend URL (https://...)") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(), colors = fieldColors()
-                )
-                Button(onClick = { scope.launch { vm.prefs.setBackendUrl(backendInput.trim()) } },
-                    colors = ButtonDefaults.buttonColors(containerColor = RoutCyan, contentColor = RoutBlack)) { Text("Save backend URL", color = RoutBlack) }
-                if (backendUrl.isNotBlank()) {
-                    val enrollState by vm.enrollState.collectAsState()
+            // ---- Scrollable sections ----
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState).padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // --- Naam ---
+                SettingsCard("Naam", onY = { sectionOffsets["Naam"] = it }) {
+                    RefField(nameInput, { nameInput = it.take(30); vm.setUserName(it.take(30)) }, "Aapka naam (Home greeting mein)")
+                }
+
+                // --- Connection (live status) ---
+                val enrolled = vm.isDeviceEnrolled()
+                val enrollState by vm.enrollState.collectAsState()
+                SettingsCard("Connection", onY = { sectionOffsets["Connection"] = it }) {
                     Text(
-                        when {
-                            enrolled -> "This device is connected. Its credential is stored encrypted on this phone only."
-                            enrollState == "waiting" -> "Approve the link that opened in your browser (valid 10 minutes)..."
-                            enrollState == "failed" -> "Enrollment failed or expired. Try again."
-                            else -> "This device is not connected yet. Enrollment creates a revocable credential for this phone only."
-                        },
-                        color = if (enrolled) RoutCyan else RoutDim, style = MaterialTheme.typography.bodyMedium
+                        "Recommended: ROUT backend (source included, folder backend/). Your AI key stays on the server - never inside the app.",
+                        color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (!enrolled) {
-                            Button(
-                                onClick = {
-                                    vm.enrollDevice { url ->
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                                    }
-                                },
-                                enabled = enrollState != "waiting",
-                                colors = ButtonDefaults.buttonColors(containerColor = RoutCyan, contentColor = RoutBlack)
-                            ) { Text(if (enrollState == "waiting") "Waiting for approval..." else "Connect this device", color = RoutBlack) }
-                        } else {
-                            OutlinedButton(onClick = { vm.revokeDevice() }) { Text("Revoke this device", color = RoutError) }
-                        }
-                    }
-                }
-                HorizontalDivider(color = RoutPanel)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Developer key mode (advanced)", color = RoutText)
+                    RefField(backendInput, { backendInput = it }, "Backend URL (https://...)")
+                    RefPrimaryButton("Save backend URL") { scope.launch { vm.prefs.setBackendUrl(backendInput.trim()) } }
+                    if (backendUrl.isNotBlank()) {
                         Text(
-                            "Not the recommended setup. Your own provider key is stored encrypted on this phone only.",
-                            color = RoutDim, style = MaterialTheme.typography.labelSmall
+                            when {
+                                enrolled -> "This device is connected. Its credential is stored encrypted on this phone only."
+                                enrollState == "waiting" -> "Approve the link that opened in your browser (valid 10 minutes)..."
+                                enrollState == "failed" -> "Enrollment failed or expired. Try again."
+                                else -> "This device is not connected yet. Enrollment creates a revocable credential for this phone only."
+                            },
+                            color = if (enrolled) RefAccent else RefMuted, fontSize = 13.sp, lineHeight = 20.sp
                         )
+                        if (!enrolled) {
+                            RefPrimaryButton(if (enrollState == "waiting") "Waiting for approval..." else "Connect this device", enabled = enrollState != "waiting") {
+                                vm.enrollDevice { url ->
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                }
+                            }
+                        } else {
+                            RefDangerButton("Revoke this device") { vm.revokeDevice() }
+                        }
                     }
-                    Switch(checked = devAiEnabled, onCheckedChange = { scope.launch { vm.prefs.setDevAiEnabled(it) } }, colors = switchColors())
-                }
-                if (devAiEnabled) {
-                    OutlinedTextField(
-                        value = devKeyInput, onValueChange = { devKeyInput = it },
-                        label = { Text(if (vm.prefs.devApiKey.isNotBlank()) "Key saved - enter to replace" else "Paste your own Gemini API key") },
-                        singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors()
-                    )
-                    Button(onClick = { if (devKeyInput.isNotBlank()) { vm.prefs.devApiKey = devKeyInput.trim(); devKeyInput = "" } },
-                        colors = ButtonDefaults.buttonColors(containerColor = RoutCyan, contentColor = RoutBlack)) { Text("Save key on device", color = RoutBlack) }
-                }
-            }
-
-            // --- Persona ---
-            val personaLabel = Personas.byId(currentPersona).label
-            Section("ROUT persona", accent = Color(0xFFFF5CE1), trailing = if (personaLabel == "Default") "" else personaLabel, onY = { yPersona = it }) {
-                Text(
-                    "Mode badalta hai ROUT KAISE bolti hai aur kaunsi voice use karti hai - kya kar sakti hai wo nahi badalta. " +
-                    "Pet names (babu/sona) sirf Sweetheart mein; Professional kabhi nahi.",
-                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
-                )
-                FlowRow(Modifier.fillMaxWidth()) {
-                    Personas.ALL.forEach { pz ->
-                        FilterChip(
-                            selected = currentPersona == pz.id,
-                            onClick = { vm.setPersona(pz.id) },
-                            label = { Text(pz.label) },
-                            modifier = Modifier.padding(end = 6.dp)
-                        )
-                    }
-                }
-            }
-
-            // --- Voice & language ---
-            val currentVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
-            Section("ROUT voice", accent = Color(0xFFB18CFF), trailing = currentVoice, onY = { yVoice = it }) {
-                Text(
-                    "Natural backend voice for spoken replies (needs a connected device). Persona ka apna voice hota hai - yahan se bhi badal sakte ho.",
-                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
-                )
-                Text("Female", color = RoutIce, style = MaterialTheme.typography.labelSmall)
-                FlowRow(Modifier.fillMaxWidth()) {
-                    listOf("Achernar", "Aoede", "Despina", "Sulafat", "Zephyr").forEach { v ->
-                        FilterChip(selected = currentVoice == v, onClick = { scope.launch { vm.prefs.setVoiceName(v) } },
-                            label = { Text(v) }, modifier = Modifier.padding(end = 6.dp))
-                    }
-                }
-                Text("Male", color = RoutIce, style = MaterialTheme.typography.labelSmall)
-                FlowRow(Modifier.fillMaxWidth()) {
-                    listOf("Achird", "Algieba", "Charon", "Umbriel", "Sadaltager").forEach { v ->
-                        FilterChip(selected = currentVoice == v, onClick = { scope.launch { vm.prefs.setVoiceName(v) } },
-                            label = { Text(v) }, modifier = Modifier.padding(end = 6.dp))
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Language", color = RoutText, modifier = Modifier.weight(1f))
-                    Row {
-                        listOf("hi-IN" to "Hindi", "en-IN" to "English").forEach { (tag, label) ->
-                            FilterChip(selected = language == tag, onClick = { scope.launch { vm.prefs.setLanguage(tag) } },
-                                label = { Text(label) }, modifier = Modifier.padding(start = 6.dp))
+                    HorizontalDivider(color = Color(0x0FFFFFFF))
+                    RefSwitchRow(
+                        "Developer key mode (advanced)",
+                        "Not the recommended setup. Your own provider key is stored encrypted on this phone only.",
+                        devAiEnabled
+                    ) { scope.launch { vm.prefs.setDevAiEnabled(it) } }
+                    if (devAiEnabled) {
+                        RefField(devKeyInput, { devKeyInput = it }, if (vm.prefs.devApiKey.isNotBlank()) "Key saved - enter to replace" else "Paste your own Gemini API key")
+                        RefPrimaryButton("Save key on device") {
+                            if (devKeyInput.isNotBlank()) { vm.prefs.devApiKey = devKeyInput.trim(); devKeyInput = "" }
                         }
                     }
                 }
-                Text("Speech rate: ${"%.1f".format(speechRate)}x", color = RoutText)
-                Slider(
-                    value = speechRate, onValueChange = { scope.launch { vm.prefs.setSpeechRate(it) } },
-                    valueRange = 0.5f..1.8f, colors = SliderDefaults.colors(thumbColor = RoutCyan, activeTrackColor = RoutCyan)
-                )
-            }
 
-            // --- Quick controls ---
-            Section("Quick controls", accent = RoutCyan, onY = { yControls = it }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Hey ROUT session", color = RoutText)
-                        Text("Foreground listening session with a persistent notification. No background wake word in this build.",
-                            color = RoutDim, style = MaterialTheme.typography.labelSmall)
+                // --- ROUT persona ---
+                val personaLabel = Personas.byId(currentPersona).label
+                SettingsCard("ROUT persona", trailing = personaLabel, onY = { sectionOffsets["ROUT persona"] = it }) {
+                    Text(
+                        "Mode badalta hai ROUT KAISE bolti hai aur kaunsi voice use karti hai - kya kar sakti hai wo nahi badalta. Pet names (babu/sona) sirf Sweetheart mein; Professional kabhi nahi.",
+                        color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp
+                    )
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Personas.ALL.forEach { pz ->
+                            RefChip(pz.label, selected = currentPersona == pz.id) { vm.setPersona(pz.id) }
+                        }
                     }
-                    Switch(checked = wakeEnabled, onCheckedChange = { on ->
-                        if (on) vm.startWakeSession() else vm.stopWakeSession()
-                    }, colors = switchColors())
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Floating orb - kahin bhi baat", color = RoutText)
-                        Text("Overlay permission chahiye. Orb ko long-press karke hatayo.", color = RoutDim, style = MaterialTheme.typography.labelSmall)
+
+                // --- ROUT voice ---
+                val currentVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
+                SettingsCard("ROUT voice", trailing = currentVoice, onY = { sectionOffsets["ROUT voice"] = it }) {
+                    Text(
+                        "Natural backend voice for spoken replies (needs a connected device). Persona ka apna voice hota hai - yahan se bhi badal sakte ho.",
+                        color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp
+                    )
+                    Text("Female", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Achernar", "Aoede", "Despina", "Sulafat", "Zephyr").forEach { v ->
+                            RefChip(v, selected = currentVoice == v) { scope.launch { vm.prefs.setVoiceName(v) } }
+                        }
                     }
-                    Switch(checked = orbEnabled, onCheckedChange = { on ->
+                    Text("Male", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Achird", "Algieba", "Charon", "Umbriel", "Sadaltager").forEach { v ->
+                            RefChip(v, selected = currentVoice == v) { scope.launch { vm.prefs.setVoiceName(v) } }
+                        }
+                    }
+                    Text("Language", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("hi-IN" to "Hindi", "en-IN" to "English").forEach { (tag, label) ->
+                            RefChip(label, selected = language == tag) { scope.launch { vm.prefs.setLanguage(tag) } }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Speech rate", color = RefInk, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${"%.1f".format(speechRate)}x", color = RefAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Slider(
+                        value = speechRate, onValueChange = { scope.launch { vm.prefs.setSpeechRate(it) } },
+                        valueRange = 0.5f..1.8f, colors = SliderDefaults.colors(thumbColor = RefAccent, activeTrackColor = RefAccent, inactiveTrackColor = Color(0x24FFFFFF))
+                    )
+                }
+
+                // --- Quick controls ---
+                SettingsCard("Quick controls", onY = { sectionOffsets["Quick controls"] = it }) {
+                    RefSwitchRow(
+                        "Hey ROUT session",
+                        "Foreground listening session with a persistent notification. No background wake word in this build.",
+                        wakeEnabled
+                    ) { on -> if (on) vm.startWakeSession() else vm.stopWakeSession() }
+                    RefSwitchRow(
+                        "Floating orb - kahin bhi baat",
+                        "Overlay permission chahiye. Orb ko long-press karke hatayo.",
+                        orbEnabled
+                    ) { on ->
                         if (on) {
                             if (Settings.canDrawOverlays(context)) vm.startOrb()
                             else context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         } else vm.stopOrb()
-                    }, colors = switchColors())
-                }
-                val batteryAlert by vm.batteryAlert.collectAsState()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Battery full/low alert", color = RoutText)
-                        Text("Speaks when the battery is full or low while the app is open.", color = RoutDim, style = MaterialTheme.typography.labelSmall)
                     }
-                    Switch(checked = batteryAlert, onCheckedChange = { scope.launch { vm.prefs.setBatteryAlert(it) } }, colors = switchColors())
-                }
-                val flipSilent by vm.flipSilent.collectAsState()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Flip phone to silent", color = RoutText)
-                        Text("Face-down rakhte hi silent, app khuli hone par.", color = RoutDim, style = MaterialTheme.typography.labelSmall)
+                    val batteryAlert by vm.batteryAlert.collectAsState()
+                    RefSwitchRow("Battery full/low alert", "Speaks when the battery is full or low while the app is open.", batteryAlert) {
+                        scope.launch { vm.prefs.setBatteryAlert(it) }
                     }
-                    Switch(checked = flipSilent, onCheckedChange = { scope.launch { vm.prefs.setFlipSilent(it) } }, colors = switchColors())
-                }
-                val bedtime by vm.bedtime.collectAsState()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Bedtime mode (DND)", color = RoutText)
-                        Text(
-                            if (bedtime != null) "Nightly DND at ${bedtime!!.first}:${"%02d".format(bedtime!!.second)}. Say 'bedtime off' to stop."
-                            else "Say 'bedtime 11 baje' to turn on Do Not Disturb every night.",
-                            color = RoutDim, style = MaterialTheme.typography.bodySmall
-                        )
+                    val flipSilent by vm.flipSilent.collectAsState()
+                    RefSwitchRow("Flip phone to silent", "Face-down rakhte hi silent, app khuli hone par.", flipSilent) {
+                        scope.launch { vm.prefs.setFlipSilent(it) }
                     }
-                    if (bedtime != null) {
-                        Text("Off", color = RoutCyan, modifier = Modifier.clickable {
-                            scope.launch {
-                                vm.prefs.clearBedtime()
-                                com.rout.aiassistant.commands.DeviceActions.cancelBedtime(context)
-                            }
-                        })
-                    }
-                }
-                val translateMode by vm.translateMode.collectAsState()
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Live translate mode", color = RoutText)
-                        Text("Hindi <-> English translation, spoken back. Say 'translate mode off' anytime.",
-                            color = RoutDim, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Switch(checked = translateMode, onCheckedChange = { scope.launch { vm.prefs.setTranslateMode(it) } }, colors = switchColors())
-                }
-            }
-
-            // --- Appearance ---
-            Section("Appearance", accent = Color(0xFFB18CFF), onY = { yAppear = it }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Cat orb emotions (Warby)", color = RoutText)
-                        Text("Warby reacts to your words. Off karne pe sirf state dikhata hai.", color = RoutDim, style = MaterialTheme.typography.labelSmall)
-                    }
-                    Switch(checked = warbyEmotions, onCheckedChange = { scope.launch { vm.prefs.setWarbyEmotions(it) } }, colors = switchColors())
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Reduce motion", color = RoutText, modifier = Modifier.weight(1f))
-                    Switch(checked = reducedMotion, onCheckedChange = { scope.launch { vm.prefs.setReducedMotion(it) } }, colors = switchColors())
-                }
-            }
-
-            // --- Permissions & privacy (live grant status) ---
-            Section("Permissions and privacy", accent = Color(0xFFFFB84D), onY = { yPrivacy = it }) {
-                fun granted(perm: String) = ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
-                val micOk = granted(android.Manifest.permission.RECORD_AUDIO)
-                val contactsOk = granted(android.Manifest.permission.READ_CONTACTS)
-                val locOk = granted(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                PermRow("Mic", micOk) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                PermRow("Contacts", contactsOk) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                PermRow("Location", locOk) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                PermRow("Overlay (floating orb)", Settings.canDrawOverlays(context)) { context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                PermRow("Notification access (media control)", MediaControl.notificationAccessEnabled(context)) { MediaControl.openAccessSettings(context) }
-                PermRow("Accessibility (screen control)", RoutAccessibilityService.isEnabled) { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                Text(
-                    "Screen text is read only on this device; password, OTP and payment screens are refused; ROUT asks before anything that could send or post.",
-                    color = RoutDim, style = MaterialTheme.typography.labelSmall
-                )
-                HorizontalDivider(color = RoutPanel)
-                OutlinedButton(onClick = {
-                    scope.launch {
-                        val text = vm.exportMemoryText()
-                        val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
-                        val f = java.io.File(dir, "rout-memory.txt").apply { writeText(text) }
-                        val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.rout.aiassistant.fileprovider", f)
-                        val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
-                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        context.startActivity(Intent.createChooser(share, "Export ROUT memory").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }
-                }, modifier = Modifier.fillMaxWidth()) { Text("Export my data (memory)", color = RoutCyan) }
-                DataButton("Clear conversation history") { vm.clearHistory() }
-                DataButton("Clear all notes") { vm.clearNotes() }
-                DataButton("Clear all tasks") { vm.clearTasks() }
-                DataButton("Clear saved memory") { vm.clearMemory() }
-            }
-
-            // --- Routines ---
-            Section("Routines", accent = Color(0xFF4DFFA6)) {
-                val routineList by vm.routines.collectAsState()
-                Text(
-                    "One phrase runs many commands. Say the trigger (e.g. \"good morning\") and ROUT runs every step in order.",
-                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
-                )
-                routineList.forEach { r ->
+                    val bedtime by vm.bedtime.collectAsState()
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(r.trigger, color = RoutText, style = MaterialTheme.typography.titleMedium)
-                            Text(r.steps.replace("\n", "  -  "), color = RoutDim, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                            Text("Bedtime mode (DND)", color = RefInk, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (bedtime != null) "Nightly DND at ${bedtime!!.first}:${"%02d".format(bedtime!!.second)}. Say 'bedtime off' to stop."
+                                else "Say 'bedtime 11 baje' to turn on Do Not Disturb every night.",
+                                color = RefDim, fontSize = 12.sp, lineHeight = 17.sp
+                            )
                         }
-                        Switch(checked = r.enabled, onCheckedChange = { vm.setRoutineEnabled(r.id, it) }, colors = switchColors())
-                        Text(
-                            "Delete", color = RoutDim, style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(start = 8.dp).clickable { vm.deleteRoutine(r.id) }
-                        )
+                        if (bedtime != null) {
+                            Text("Off", color = RefAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable {
+                                    scope.launch {
+                                        vm.prefs.clearBedtime()
+                                        com.rout.aiassistant.commands.DeviceActions.cancelBedtime(context)
+                                    }
+                                }.padding(6.dp))
+                        }
+                    }
+                    val translateMode by vm.translateMode.collectAsState()
+                    RefSwitchRow("Live translate mode", "Hindi <-> English translation, spoken back. Say 'translate mode off' anytime.", translateMode) {
+                        scope.launch { vm.prefs.setTranslateMode(it) }
+                    }
+                    RefSwitchRow("Reduce motion", "Animations dheemi - kam resources, kam dhyaan.", reducedMotion) {
+                        scope.launch { vm.prefs.setReducedMotion(it) }
                     }
                 }
-                var newTrigger by remember { mutableStateOf("") }
-                var newSteps by remember { mutableStateOf("") }
-                OutlinedTextField(
-                    value = newTrigger, onValueChange = { newTrigger = it },
-                    label = { Text("Trigger phrase (e.g. gym time)") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = newSteps, onValueChange = { newSteps = it },
-                    label = { Text("Steps, one per line (e.g. weather)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(onClick = {
-                    val steps = newSteps.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-                    if (newTrigger.isNotBlank() && steps.isNotEmpty()) {
-                        vm.addRoutine(newTrigger, steps)
-                        newTrigger = ""; newSteps = ""
+
+                // --- Permissions and privacy (live grant status) ---
+                SettingsCard("Permissions and privacy", onY = { sectionOffsets["Permissions and privacy"] = it }) {
+                    fun granted(perm: String) = ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
+                    RefPermRow("Mic", granted(android.Manifest.permission.RECORD_AUDIO)) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    RefPermRow("Contacts", granted(android.Manifest.permission.READ_CONTACTS)) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    RefPermRow("Location", granted(android.Manifest.permission.ACCESS_FINE_LOCATION)) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    RefPermRow("Overlay (floating orb)", Settings.canDrawOverlays(context)) { context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    RefPermRow("Notification access (media control)", MediaControl.notificationAccessEnabled(context)) { MediaControl.openAccessSettings(context) }
+                    RefPermRow("Accessibility (screen control)", RoutAccessibilityService.isEnabled) { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    Text(
+                        "Screen text is read only on this device; password, OTP and payment screens are refused; ROUT asks before anything that could send or post.",
+                        color = RefDim, fontSize = 12.sp, lineHeight = 17.sp
+                    )
+                    RefAccentButton("Export my data (memory)") {
+                        scope.launch {
+                            val text = vm.exportMemoryText()
+                            val dir = java.io.File(context.cacheDir, "exports").apply { mkdirs() }
+                            val f = java.io.File(dir, "rout-memory.txt").apply { writeText(text) }
+                            val uri = androidx.core.content.FileProvider.getUriForFile(context, "com.rout.aiassistant.fileprovider", f)
+                            val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_STREAM, uri)
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            context.startActivity(Intent.createChooser(share, "Export ROUT memory").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
                     }
-                }) { Text("Add routine") }
-            }
+                    RefDangerButton("Clear conversation history") { vm.clearHistory() }
+                    RefDangerButton("Clear all notes") { vm.clearNotes() }
+                    RefDangerButton("Clear all tasks") { vm.clearTasks() }
+                    RefDangerButton("Clear saved memory") { vm.clearMemory() }
+                }
 
-            // --- Weather ---
-            Section("Weather", accent = RoutIce) {
-                Text("Uses Open-Meteo (free, no key). With location permission ROUT uses your position; otherwise your city.",
-                    color = RoutDim, style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(
-                    value = cityInput, onValueChange = { cityInput = it },
-                    label = { Text("City (used when location is off)") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth(), colors = fieldColors()
-                )
-                Button(onClick = { scope.launch { vm.prefs.setWeatherCity(cityInput.trim()) } },
-                    colors = ButtonDefaults.buttonColors(containerColor = RoutCyan, contentColor = RoutBlack)) { Text("Save city", color = RoutBlack) }
-            }
-
-            // --- Screens ---
-            Section("Screens", accent = RoutIce) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history").forEach { (label, route) ->
-                        OutlinedButton(onClick = { nav.navigate(route) }) { Text(label, color = RoutCyan) }
+                // --- Routines ---
+                SettingsCard("Routines", onY = { sectionOffsets["Routines"] = it }) {
+                    val routineList by vm.routines.collectAsState()
+                    Text(
+                        "One phrase runs many commands. Say the trigger (e.g. \"good morning\") and ROUT runs every step in order.",
+                        color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp
+                    )
+                    routineList.forEach { r ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0x09FFFFFF)).border(1.dp, Color(0x0FFFFFFF), RoundedCornerShape(16.dp)).padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(r.trigger, color = RefInk, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(r.steps.replace("\n", "  -  "), color = RefDim, fontSize = 12.sp, maxLines = 2)
+                            }
+                            RefSwitch(r.enabled) { vm.setRoutineEnabled(r.id, it) }
+                            Text(
+                                "Delete", color = RefDanger, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(start = 8.dp).clickable { vm.deleteRoutine(r.id) }
+                            )
+                        }
+                    }
+                    var newTrigger by remember { mutableStateOf("") }
+                    var newSteps by remember { mutableStateOf("") }
+                    RefField(newTrigger, { newTrigger = it }, "Trigger phrase (e.g. gym time)")
+                    RefField(newSteps, { newSteps = it }, "Steps, one per line (e.g. weather)", singleLine = false)
+                    RefPrimaryButton("Add routine") {
+                        val steps = newSteps.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                        if (newTrigger.isNotBlank() && steps.isNotEmpty()) {
+                            vm.addRoutine(newTrigger, steps)
+                            newTrigger = ""; newSteps = ""
+                        }
                     }
                 }
+
+                // --- Weather ---
+                SettingsCard("Weather", onY = { sectionOffsets["Weather"] = it }) {
+                    Text("Uses Open-Meteo (free, no key).", color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp)
+                    RefField(cityInput, { cityInput = it }, "City (used when location is off)")
+                    RefPrimaryButton("Save city") { scope.launch { vm.prefs.setWeatherCity(cityInput.trim()) } }
+                }
+
+                // --- Screens ---
+                SettingsCard("Screens", onY = { sectionOffsets["Screens"] = it }) {
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history").forEach { (label, route) ->
+                            RefChip(label, selected = false) { nav.navigate(route) }
+                        }
+                    }
+                }
+
+                // --- About ROUT ---
+                SettingsCard("About ROUT", trailing = BuildConfig.VERSION_NAME, onY = { sectionOffsets["About ROUT"] = it }) {
+                    RefGhostButton("Source code (GitHub)") {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/swetaigx-ui/ROUT")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                    RefGhostButton("Help and commands list") {
+                        vm.onUserText("tum kya kya kar sakte ho", fromVoice = false)
+                        goHome()
+                    }
+                    Text(
+                        "Honest limits: no always-on background wake word; media control needs notification access; AI answers need the connected backend; calls and messages always ask for your confirmation first.",
+                        color = RefDim, fontSize = 12.sp, lineHeight = 17.sp
+                    )
+                }
+
+                // ---- Credit: flowing RGB glow INSIDE the letters ----
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    Text("ROUT AI \u00B7 ", color = RefDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.2.sp)
+                    RgbFlowText("POWERED BY GYAN", reducedMotion = reducedMotion)
+                }
+                Spacer(Modifier.height(120.dp))
             }
 
-            // --- About ---
-            Section("About ROUT", accent = RoutIce, trailing = BuildConfig.VERSION_NAME, onY = { yAbout = it }) {
-                PermRow("Version", true, valueText = BuildConfig.VERSION_NAME) {}
-                OutlinedButton(onClick = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/swetaigx-ui/ROUT")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }, modifier = Modifier.fillMaxWidth()) { Text("Source code (GitHub)", color = RoutCyan) }
-                OutlinedButton(onClick = {
-                    vm.onUserText("tum kya kya kar sakte ho", fromVoice = false)
-                    nav.navigate("home")
-                }, modifier = Modifier.fillMaxWidth()) { Text("Help and commands list", color = RoutCyan) }
-                Text(
-                    "Honest limits: no always-on background wake word; media control needs notification access; " +
-                    "AI answers need the connected backend; calls/messages always ask for your confirmation first.",
-                    color = RoutDim, style = MaterialTheme.typography.bodyMedium
-                )
-            }
-
-            Text("ROUT AI - POWERED BY GYAN", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp,
-                style = androidx.compose.ui.text.TextStyle(brush = Brush.horizontalGradient(listOf(Color(0xFFFF3CAC), Color(0xFF7B61FF), Color(0xFF2BD9FF), Color(0xFF3CF5A0)))),
-                modifier = Modifier.align(Alignment.CenterHorizontally))
-            Spacer(Modifier.height(16.dp))
+            // ---- Dock ----
+            RoutDock("settings", nav, Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp, start = 16.dp, end = 16.dp))
         }
-      }
+    }
+}
+
+// ---------- Reference-styled building blocks ----------
+
+@Composable
+fun SettingsCard(title: String, trailing: String = "", onY: (Float) -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth()
+            .onGloballyPositioned { onY(it.positionInParent().y) }
+            .clip(RoundedCornerShape(22.dp))
+            .background(RefCardBg)
+            .border(1.dp, RefCardLine, RoundedCornerShape(22.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = RefInk, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            if (trailing.isNotBlank() && trailing != "Default") Text(trailing, color = RefAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        content()
     }
 }
 
 @Composable
-fun PermRow(label: String, granted: Boolean, valueText: String? = null, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+fun RefIconButton(icon: ImageVector, label: String, active: Boolean = false, onClick: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).clip(CircleShape)
+            .background(if (active) Color(0x2467F0FF) else Color(0x12FFFFFF))
+            .border(1.dp, if (active) Color(0x8067F0FF) else Color(0x29FFFFFF), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Icon(icon, label, tint = if (active) RefAccent else Color(0xFFC9D2DE), modifier = Modifier.size(18.dp)) }
+}
+
+@Composable
+fun RefChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.height(36.dp).clip(RoundedCornerShape(50))
+            .background(
+                if (selected) Brush.linearGradient(listOf(Color(0x998B5CF6), Color(0x4267F0FF)))
+                else Brush.linearGradient(listOf(Color(0x0AFFFFFF), Color(0x0AFFFFFF)))
+            )
+            .border(1.dp, if (selected) Color(0xA6BEAAFF) else Color(0x1FFFFFFF), RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Text(label, color = RoutText, modifier = Modifier.weight(1f))
+        Text(label, color = if (selected) Color.White else Color(0xFFCFCBE6), fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+    }
+}
+
+@Composable
+fun RefSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val thumbOffset by animateDpAsState(if (checked) 18.dp else 0.dp, tween(250), label = "sw")
+    Box(
+        Modifier.width(46.dp).height(28.dp).clip(RoundedCornerShape(50))
+            .background(
+                if (checked) Brush.horizontalGradient(listOf(Color(0xFF4EE8A0), Color(0xFF67F0FF)))
+                else Brush.horizontalGradient(listOf(Color(0x24FFFFFF), Color(0x24FFFFFF)))
+            )
+            .clickable { onCheckedChange(!checked) }
+            .padding(3.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(Modifier.offset(x = thumbOffset).size(22.dp).clip(CircleShape).background(Color.White))
+    }
+}
+
+@Composable
+fun RefSwitchRow(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 14.dp)) {
+            Text(title, color = RefInk, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = RefDim, fontSize = 12.sp, lineHeight = 17.sp)
+        }
+        RefSwitch(checked, onCheckedChange)
+    }
+}
+
+@Composable
+fun RefPermRow(label: String, granted: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = RefInk, fontSize = 14.5.sp, modifier = Modifier.weight(1f))
         Text(
-            valueText ?: if (granted) "Granted" else "Manage",
-            color = if (valueText != null || granted) RoutCyan else Color(0xFFFFB84D),
-            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
+            if (granted) "Granted" else "Manage",
+            color = if (granted) RefOk else Color(0xFFFFB84D),
+            fontSize = 13.sp, fontWeight = FontWeight.SemiBold
         )
     }
 }
 
 @Composable
-fun Section(title: String, accent: Color = RoutIce, trailing: String = "", onY: (Float) -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
-    com.rout.aiassistant.ui.components.GlassBox(radius = 26.dp, modifier = Modifier.fillMaxWidth().onGloballyPositioned { onY(it.positionInParent().y) }) {
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = Color(0xFFF5F7FA), fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                if (trailing.isNotBlank()) Text(trailing, color = Color(0xFF8D97A6), style = MaterialTheme.typography.labelMedium)
-            }
-            content()
-        }
-    }
+fun RefField(value: String, onChange: (String) -> Unit, label: String, singleLine: Boolean = true) {
+    OutlinedTextField(
+        value = value, onValueChange = onChange,
+        label = { Text(label, fontSize = 12.sp) }, singleLine = singleLine,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Color(0x9967F0FF), unfocusedBorderColor = Color(0x1FFFFFFF),
+            focusedContainerColor = Color(0x0AFFFFFF), unfocusedContainerColor = Color(0x0AFFFFFF),
+            focusedTextColor = RefInk, unfocusedTextColor = RefInk,
+            focusedLabelColor = RefDim, unfocusedLabelColor = RefDim
+        )
+    )
 }
 
 @Composable
-fun DataButton(label: String, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) { Text(label, color = RoutError) }
+fun RefPrimaryButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(14.dp))
+            .background(if (enabled) Brush.linearGradient(listOf(Color(0xFF7FF3FF), Color(0xFF8FA6FF))) else Brush.linearGradient(listOf(Color(0x557FF3FF), Color(0x558FA6FF))))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(text, color = Color(0xFF061019), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
 }
 
 @Composable
-fun switchColors() = SwitchDefaults.colors(checkedTrackColor = Color(0xFF34D399), checkedThumbColor = Color.White, uncheckedTrackColor = Color(0x24FFFFFF), uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent, checkedBorderColor = Color.Transparent)
+fun RefDangerButton(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(14.dp))
+            .border(1.dp, Color(0x61FF82A0), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(text, color = RefDanger, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+}
+
+@Composable
+fun RefAccentButton(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(14.dp))
+            .border(1.dp, Color(0x6B67F0FF), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(text, color = RefAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+}
+
+@Composable
+fun RefGhostButton(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(14.dp))
+            .background(Color(0x0DFFFFFF))
+            .border(1.dp, Color(0x24FFFFFF), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { Text(text, color = RefInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+}

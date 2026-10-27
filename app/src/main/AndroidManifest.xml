@@ -76,6 +76,13 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Floating LIVE orb: started only by an explicit LIVE tap from the foreground;
+             keeps the mic alive after Back and hosts the floating Siri-style orb -->
+        <service
+            android:name=".service.LiveOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <!-- Quick Settings tile: one tap -> ROUT opens straight into listening -->
         <service
             android:name=".service.RoutTileService"
