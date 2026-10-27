@@ -174,7 +174,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter))
                 db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = reply))
                 // The model must report the ACTUAL outcome - never its own assumption.
-                live.sendContextNote("[ROUT device action result] User asked: \"$utter\". Actual result: ${reply.take(200)}. Tell the user this outcome briefly and naturally. Do not claim anything beyond this result.")
+                // Dispatch-level truth: the router's message is what the phone DID
+                // (e.g. startActivity succeeded) - not visual confirmation. The note
+                // says so, and the model is told not to upgrade it into a promise.
+                live.sendContextNote("[ROUT device action result] User asked: \"$utter\". Phone-side result (dispatched, not visually confirmed): ${reply.take(200)}. Tell the user this outcome briefly and naturally. If it failed, say so. Never upgrade this into a bigger claim.")
             }
         }
     }

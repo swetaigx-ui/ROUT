@@ -68,6 +68,22 @@ class Rout071RenderTest {
         shot("home_live_error_074")
     }
 
+    /** 0.7.5: LIVE error state in isolation - fresh VM, no other state bleeding in. */
+    @Test fun liveErrorIsolated() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        lateinit var vm: MainViewModel
+        composeRule.runOnUiThread { vm = MainViewModel(app) }
+        composeRule.setContent {
+            val nav = rememberNavController()
+            com.rout.aiassistant.ui.screens.HomeScreen(vm, nav)
+        }
+        val f = vm.live.javaClass.getDeclaredField("_state").apply { isAccessible = true }
+        val e = vm.live.javaClass.getDeclaredField("_error").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST") (e.get(vm.live) as MutableStateFlow<String?>).value = "Live error: model overloaded"
+        @Suppress("UNCHECKED_CAST") (f.get(vm.live) as MutableStateFlow<String>).value = "failed"
+        shot("home_live_error_isolated_075")
+    }
+
     @Test fun chatView() {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         lateinit var vm: MainViewModel
