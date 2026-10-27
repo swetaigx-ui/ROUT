@@ -33,7 +33,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -81,7 +80,6 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
     val confirm by vm.confirm.collectAsState()
     val context = LocalContext.current
 
-    var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     var micGranted by remember {
@@ -130,42 +128,6 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                 GlassBox(radius = 50.dp) {
                     Icon(Icons.Default.Settings, "Settings", tint = Color(0xFFC9D2DE),
                         modifier = Modifier.size(46.dp).clickable { nav.navigate("settings") }.padding(12.dp))
-                }
-            }
-
-            // ---- Greeting card with ask field ----
-            val userName by vm.userName.collectAsState()
-            val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
-            val greet = (if (hour < 12) "Good Morning" else if (hour < 17) "Good Afternoon" else "Good Evening") +
-                (if (userName.isNotBlank()) ", $userName" else "")
-            GlassBox(Modifier.fillMaxWidth(), radius = 26.dp) {
-                Column(Modifier.padding(20.dp)) {
-                    Text(greet, color = Color(0xFFF5F7FA), fontSize = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
-                    Text("Aaj main aapki kya madad karun?", color = Color(0xFF8D97A6), fontSize = 15.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.weight(1f).background(Color(0x0FFFFFFF), RoundedCornerShape(50))
-                                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(50))
-                                .padding(horizontal = 18.dp, vertical = 14.dp)
-                        ) {
-                            androidx.compose.foundation.text.BasicTextField(
-                                value = text, onValueChange = { text = it }, singleLine = true,
-                                textStyle = TextStyle(color = Color(0xFFF5F7FA), fontSize = 15.sp),
-                                cursorBrush = Brush.linearGradient(listOf(RoutCyan, RoutCyan)),
-                                modifier = Modifier.fillMaxWidth(),
-                                decorationBox = { inner ->
-                                    if (text.isEmpty()) Text("ROUT se kuch bhi poochho\u2026", color = Color(0xFF8D97A6), fontSize = 15.sp, maxLines = 1)
-                                    inner()
-                                }
-                            )
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Box(
-                            Modifier.size(50.dp).background(Brush.linearGradient(listOf(Color(0xFF2563EB), Color(0xFF7C3AED))), RoundedCornerShape(50))
-                                .clickable { if (text.isNotBlank()) { vm.onUserText(text, false); text = "" } },
-                            contentAlignment = Alignment.Center
-                        ) { Text("\u2192", color = Color.White, fontSize = 18.sp) }
-                    }
                 }
             }
 
