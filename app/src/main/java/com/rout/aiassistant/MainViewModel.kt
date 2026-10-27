@@ -148,8 +148,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * commands execute via the local router. General conversation is NOT routed -
      * the LIVE model already answered it in its own voice.
      */
+    // Dedup: transcription retries/interruptions can deliver the same utterance
+    // twice - a repeated command must not repeat the action.
+    @Volatile private var lastLiveUtter: String = ""
+    @Volatile private var lastLiveUtterAt: Long = 0
+
     internal fun onLiveUserTurn(utter: String) {
         if (utter.isBlank()) return
+        val now = System.currentTimeMillis()
+        if (utter == lastLiveUtter && now - lastLiveUtterAt < 8000) return
+        lastLiveUtter = utter; lastLiveUtterAt = now
         viewModelScope.launch {
             val cid = conversationId.value
             if (_confirm.value != null) {
@@ -165,6 +173,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (reply.isNotBlank()) {
                 db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter))
                 db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = reply))
+                // The model must report the ACTUAL outcome - never its own assumption.
+                live.sendContextNote("[ROUT device action result] User asked: \"$utter\". Actual result: ${reply.take(200)}. Tell the user this outcome briefly and naturally. Do not claim anything beyond this result.")
             }
         }
     }

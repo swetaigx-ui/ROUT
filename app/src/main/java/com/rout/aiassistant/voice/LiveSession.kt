@@ -173,6 +173,19 @@ class LiveSession(private val appContext: Context) {
         }.also { it.isDaemon = true; it.start() }
     }
 
+    /**
+     * Ground the model's speech in reality: after a local device action runs, its
+     * RESULT goes back into the live session as a text note, so the model reports
+     * what actually happened instead of claiming success on its own.
+     */
+    fun sendContextNote(note: String) {
+        if (_state.value != "live") return
+        try {
+            ws?.send(JSONObject().put("realtimeInput", JSONObject()
+                .put("text", note.take(400))).toString())
+        } catch (_: Exception) {}
+    }
+
     private fun fail(msg: String) { _error.value = msg; stop(); _state.value = "failed" }
 
     fun stop() {

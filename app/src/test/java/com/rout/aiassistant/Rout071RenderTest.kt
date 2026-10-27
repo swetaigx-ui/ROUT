@@ -57,6 +57,15 @@ class Rout071RenderTest {
         val f = vm.live.javaClass.getDeclaredField("_state").apply { isAccessible = true }
         @Suppress("UNCHECKED_CAST") (f.get(vm.live) as MutableStateFlow<String>).value = "live"
         shot("home_live_chat_071")
+        // 0.7.4: the "Sun raha:" diagnostic line - what the model is hearing, on screen.
+        val h = vm.live.javaClass.getDeclaredField("_heard").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST") (h.get(vm.live) as MutableStateFlow<String>).value = "camera kholo"
+        shot("home_live_heard_074")
+        // 0.7.4: surfaced upstream error instead of silent failure.
+        val e = vm.live.javaClass.getDeclaredField("_error").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST") (e.get(vm.live) as MutableStateFlow<String?>).value = "Live error: model overloaded"
+        @Suppress("UNCHECKED_CAST") (f.get(vm.live) as MutableStateFlow<String>).value = "failed"
+        shot("home_live_error_074")
     }
 
     @Test fun chatView() {
