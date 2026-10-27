@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.rout.aiassistant.commands.ConfirmRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -30,7 +31,27 @@ class LiveIntegration077Test {
         com.rout.aiassistant.data.RoutDatabase.testInstance =
             androidx.room.Room.inMemoryDatabaseBuilder(app, com.rout.aiassistant.data.RoutDatabase::class.java)
                 .allowMainThreadQueries().build()
-        return MainViewModel(app)
+        val vm = MainViewModel(app)
+        // Wait for init{} to create the conversation, else rows land under cid 0.
+        val cidF = vm.javaClass.getDeclaredField("conversationId").apply { isAccessible = true }
+        @Suppress("UNCHECKED_CAST")
+        val cidFlow = cidF.get(vm) as MutableStateFlow<Long>
+        repeat(50) {
+            Thread.sleep(100)
+            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            if (cidFlow.value != 0L) return vm
+        }
+        return vm
+    }
+
+    /** Direct DB read: the messages StateFlow is WhileSubscribed (cold without a UI),
+     *  so assertions verify the persisted rows, not the view pipeline. */
+    private fun rows(): List<Pair<String, String>> {
+        val db = com.rout.aiassistant.data.RoutDatabase.testInstance!!.openHelper.readableDatabase
+        val c = db.query("SELECT role, text FROM messages ORDER BY id")
+        val out = mutableListOf<Pair<String, String>>()
+        while (c.moveToNext()) out.add(c.getString(0) to c.getString(1))
+        c.close(); return out
     }
 
     private suspend fun drain(until: () -> Boolean = { false }) {
@@ -51,21 +72,19 @@ class LiveIntegration077Test {
 
     @Test fun liveTurnDispatchesAndRecords() = runBlocking {
         val vm = newVm()
-        val before = vm.messages.value.size
         vm.onLiveUserTurn("kitne baje")
-        drain { vm.messages.value.size >= before + 2 }
-        val msgs = vm.messages.value
-        assertTrue("user turn recorded", msgs.any { it.role == "user" && it.text == "kitne baje" })
-        val reply = msgs.lastOrNull { it.role == "rout" }?.text ?: ""
-        assertTrue("device-grounded reply, got: $reply", Regex("\\d{1,2}:\\d{2} [AP]M [A-Z]{2,5}").containsMatchIn(reply))
+        drain { rows().size >= 2 }
+        val msgs = rows()
+        assertTrue("user turn recorded, got " + msgs, msgs.any { it.first == "user" && it.second == "kitne baje" })
+        val reply = msgs.lastOrNull { it.first == "rout" }?.second ?: ""
+        assertTrue("device-grounded reply, got: " + reply, Regex("\\d{1,2}:\\d{2} [AP]M [A-Z]{2,5}").containsMatchIn(reply))
     }
 
     @Test fun liveTurnGeneralChatDoesNotDispatch() = runBlocking {
         val vm = newVm()
-        val before = vm.messages.value.size
         vm.onLiveUserTurn("tumhara din kaisa ja raha hai")
         drain()
-        assertEquals("general chat in LIVE must dispatch nothing", before, vm.messages.value.size)
+        assertTrue("general chat in LIVE must dispatch nothing, got ${rows()}", rows().isEmpty())
     }
 
     @Test fun confirmActionNotExecutedBeforeYes() = runBlocking {
@@ -98,13 +117,12 @@ class LiveIntegration077Test {
         val vm = newVm()
         val ran = booleanArrayOf(false)
         armConfirm(vm, ran)
-        val before = vm.messages.value.size
         vm.onLiveUserTurn("nahi")
-        drain { vm.confirm.value == null }
+        drain { vm.confirm.value == null && rows().any { it.second == "Cancelled." } }
         assertFalse("no/cancel dispatched the action", ran[0])
         assertEquals(null, vm.confirm.value)
-        assertTrue("cancel acknowledged", vm.messages.value.any { it.role == "rout" && it.text == "Cancelled." })
-        assertTrue("user no recorded", vm.messages.value.size >= before + 1)
+        assertTrue("cancel acknowledged, got ${rows()}", rows().any { it.first == "rout" && it.second == "Cancelled." })
+        assertTrue("user no recorded", rows().any { it.first == "user" && it.second == "nahi" })
     }
 
     @Test fun liveStopResetsState() {

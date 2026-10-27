@@ -204,5 +204,6 @@ class LiveSession(private val appContext: Context) {
         try { track?.release() } catch (_: Exception) {}
         track = null
         if (_state.value != "failed") _state.value = "off"
+        _heard.value = ""; _transcript.value = ""
     }
 }
