@@ -116,6 +116,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val live: com.rout.aiassistant.voice.LiveSession get() = RoutApplication.live
     val liveState: StateFlow<String> = live.state
     val liveTranscript: StateFlow<String> = live.transcript
+    val liveHeard: StateFlow<String> = live.heard
     val liveError: StateFlow<String?> = live.error
     fun toggleLive() {
         val app = getApplication<Application>()
@@ -138,6 +139,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!android.provider.Settings.canDrawOverlays(app)) _overlayPrompt.value = true
         viewModelScope.launch {
             live.start(backendUrl.value, enrollment.deviceToken ?: "", personaMode.value, prefs.voiceName.first())
+        }
+    }
+
+    /**
+     * A completed LIVE user utterance (from the model's input transcription).
+     * Pending confirmations resolve first ("haan"/"nahi"); otherwise clear device
+     * commands execute via the local router. General conversation is NOT routed -
+     * the LIVE model already answered it in its own voice.
+     */
+    internal fun onLiveUserTurn(utter: String) {
+        if (utter.isBlank()) return
+        viewModelScope.launch {
+            val cid = conversationId.value
+            if (_confirm.value != null) {
+                val t = utter.trim().lowercase().trimEnd('.', '!')
+                val yes = setOf("haan", "ha", "han", "haan ji", "han ji", "yes", "ok", "okay", "kar do", "haan kar do", "confirm", "theek hai", "haan bolo")
+                val no = setOf("nahi", "nahin", "na", "no", "cancel", "rehne do", "mat karo", "ruk", "ruko", "nahi karna")
+                when {
+                    t in yes -> { db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter)); confirmPending(); return@launch }
+                    t in no -> { db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter)); cancelPending(); return@launch }
+                }
+            }
+            val reply = router.handle(utter, localOnly = true)
+            if (reply.isNotBlank()) {
+                db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter))
+                db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = reply))
+            }
         }
     }
 
@@ -184,6 +212,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             onClearVision = { visionDoc = null }
         )
         engine.initTts()
+        // LIVE voice turns: a completed user utterance runs clear device commands
+        // locally (app opens, timers, DND...) while the model handles conversation.
+        live.onUserTurn = { utter -> onLiveUserTurn(utter) }
         viewModelScope.launch {
             // Persona mode switches ROUT's talking style AND its voice (Ruby pattern).
             personaMode.collect { id ->

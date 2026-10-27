@@ -1,8 +1,10 @@
 package com.rout.aiassistant.voice
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
@@ -22,10 +24,16 @@ import java.util.concurrent.TimeUnit
  * Live (streaming) voice conversation through the ROUT backend relay (/v1/live).
  * Mic PCM 16 kHz goes up, model PCM 24 kHz comes down and plays as it arrives.
  * The relay only accepts realtimeInput from this client; it cannot change the
- * model, voice or instructions. Live mode does not operate the phone: commands
- * still go through the normal command path. States: off | connecting | live | failed.
+ * model, voice or instructions. States: off | connecting | live | failed.
+ *
+ * Phone actions in LIVE (Gyan's 2026-10-27 report: "orb aata hai lekin commands
+ * sun nahi raha / kuch nahi karta"): the app reads the model's INPUT
+ * transcription of what the user said and, when a turn completes, runs clear
+ * device commands through the normal local CommandRouter (localOnly - never the
+ * AI fallback). `heard` shows what the model heard, so "sun nahi raha" is
+ * diagnosable on screen instead of guesswork.
  */
-class LiveSession {
+class LiveSession(private val appContext: Context) {
 
     private val _state = MutableStateFlow("off")
     val state: StateFlow<String> = _state
@@ -36,6 +44,14 @@ class LiveSession {
     private val _speaking = MutableStateFlow(false)
     /** True while model audio is arriving - drives the floating orb's glow. */
     val speaking: StateFlow<Boolean> = _speaking
+
+    private val _heard = MutableStateFlow("")
+    /** Live input transcription: what the model is hearing from the mic right now. */
+    val heard: StateFlow<String> = _heard
+
+    /** Completed user utterance (per turn) for local device-command execution. */
+    var onUserTurn: ((String) -> Unit)? = null
+    private val userBuf = StringBuilder()
 
     private var ws: WebSocket? = null
     private var record: AudioRecord? = null
@@ -71,6 +87,7 @@ class LiveSession {
             _state.value = "failed"; _error.value = "Live needs an enrolled device."; return
         }
         closed = false; ready = false; running = true
+        userBuf.setLength(0); _heard.value = ""
         _state.value = "connecting"; _error.value = null; _transcript.value = ""
         val req = Request.Builder().url(wsUrl(backendUrl, persona, voice))
             .header("Sec-WebSocket-Protocol", "rout-live, bearer.$deviceToken").build()
@@ -83,10 +100,14 @@ class LiveSession {
         })
     }
 
-    private fun handle(text: String) {
+    internal fun handle(text: String) {
         try {
             val m = JSONObject(text)
             if (m.has("setupComplete")) { ready = true; _state.value = "live"; startMic(); return }
+            // Upstream fatal errors used to be swallowed silently - surface them.
+            m.optJSONObject("error")?.let { e ->
+                fail("Live error: " + e.optString("message", "upstream error").take(120)); return
+            }
             val sc = m.optJSONObject("serverContent") ?: return
             if (sc.optBoolean("interrupted")) { _speaking.value = false; track?.pause().also { track?.flush(); track?.play() } }
             sc.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
@@ -95,8 +116,18 @@ class LiveSession {
                     if (d.isNotEmpty()) { _speaking.value = true; play(Base64.decode(d, Base64.DEFAULT)) }
                 }
             }
+            // What the model heard from the user's mic - drives the on-screen
+            // "Sun raha:" line and the per-turn local command execution.
+            sc.optJSONObject("inputTranscription")?.optString("text")?.let {
+                userBuf.append(it); _heard.value = userBuf.toString().takeLast(200)
+            }
             sc.optJSONObject("outputTranscription")?.optString("text")?.let { _transcript.value = (_transcript.value + it).takeLast(600) }
-            if (sc.optBoolean("turnComplete")) { _transcript.value = ""; _speaking.value = false }
+            if (sc.optBoolean("turnComplete")) {
+                _transcript.value = ""; _speaking.value = false
+                val said = userBuf.toString().trim()
+                userBuf.setLength(0); _heard.value = ""
+                if (said.isNotEmpty()) onUserTurn?.invoke(said)
+            }
         } catch (_: Exception) {}
     }
 
@@ -125,6 +156,12 @@ class LiveSession {
         } catch (e: Exception) { fail("Microphone unavailable."); return }
         if (rec.state != AudioRecord.STATE_INITIALIZED) { rec.release(); fail("Microphone unavailable."); return }
         if (AcousticEchoCanceler.isAvailable()) try { AcousticEchoCanceler.create(rec.audioSessionId)?.enabled = true } catch (_: Exception) {}
+        // VOICE_COMMUNICATION on Vivo/other OEMs needs the matching audio mode or
+        // the mic can deliver silence ("sun nahi raha").
+        try {
+            val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            am.mode = AudioManager.MODE_IN_COMMUNICATION
+        } catch (_: Exception) {}
         record = rec
         rec.startRecording()
         micThread = Thread {
@@ -147,6 +184,10 @@ class LiveSession {
         try { record?.stop() } catch (_: Exception) {}
         try { record?.release() } catch (_: Exception) {}
         record = null
+        try {
+            val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            if (am.mode == AudioManager.MODE_IN_COMMUNICATION) am.mode = AudioManager.MODE_NORMAL
+        } catch (_: Exception) {}
         try { track?.stop() } catch (_: Exception) {}
         try { track?.release() } catch (_: Exception) {}
         track = null

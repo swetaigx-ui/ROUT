@@ -160,8 +160,13 @@ class CommandRouter(
     private fun has(perm: String) =
         ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
 
-    /** Entry point. Supports multi-step "A aur B" plans with per-step results. */
-    suspend fun handle(rawInput: String): String {
+    /**
+     * Entry point. Supports multi-step "A aur B" plans with per-step results.
+     * localOnly (LIVE voice turns): run only real device commands; a message that
+     * matches nothing local returns "" instead of the AI fallback, so general
+     * conversation is left to the LIVE model's own voice reply.
+     */
+    suspend fun handle(rawInput: String, localOnly: Boolean = false): String {
         val raw = rawInput.trim()
         if (raw.isEmpty()) return "Kuch sunai nahi diya. Please try again."
         // Clear a shared photo/PDF context.
@@ -173,14 +178,15 @@ class CommandRouter(
         }
         val steps = splitSteps(raw)
         if (steps.size > 1) {
-            val results = steps.map { step -> singleStep(step) }
+            val results = steps.map { step -> singleStep(step, localOnly) }
+            if (localOnly && results.all { it.second.isBlank() }) return ""
             val ok = results.count { it.first }
             val sb = StringBuilder()
             results.forEachIndexed { i, r -> sb.append("${i + 1}. ${r.second}") }
             sb.append("\n$ok of ${results.size} steps completed.")
             return sb.toString().trim()
         }
-        return singleStep(raw).second
+        return singleStep(raw, localOnly).second
     }
 
     private fun splitSteps(raw: String): List<String> {
@@ -189,7 +195,7 @@ class CommandRouter(
         return if (parts.size > 1) parts else listOf(raw)
     }
 
-    private suspend fun singleStep(raw: String): Pair<Boolean, String> {
+    private suspend fun singleStep(raw: String, localOnly: Boolean = false): Pair<Boolean, String> {
         val t = HindiNormal.dedupeRepeat(HindiNormal.latinize(raw.lowercase().trim()))
         val permNotified = object { var done = false }
         fun needPerm() { if (!permNotified.done) { permNotified.done = true; onPermissionNeeded(raw) } }
@@ -891,6 +897,8 @@ class CommandRouter(
         }
 
         // --- AI fallback ---
+        // LIVE localOnly: not a device command -> no action, no AI reply.
+        if (localOnly) return false to ""
         return aiFallback(raw)
     }
 

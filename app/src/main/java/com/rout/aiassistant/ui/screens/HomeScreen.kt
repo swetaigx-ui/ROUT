@@ -77,6 +77,7 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
     val voiceDetail by vm.voiceDetail.collectAsState()
     val liveState by vm.liveState.collectAsState()
     val liveError by vm.liveError.collectAsState()
+    val liveHeard by vm.liveHeard.collectAsState()
     val confirm by vm.confirm.collectAsState()
     val context = LocalContext.current
 
@@ -211,7 +212,8 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
             val statusText = when {
                 liveState == "connecting" -> "Live connecting..."
                 liveState == "failed" -> (liveError ?: "Live unavailable")
-                liveState == "live" -> ""
+                liveState == "live" && liveHeard.isNotBlank() -> "Sun raha: " + liveHeard
+                liveState == "live" -> "LIVE on - bolo, ROUT sun raha hai"
                 voiceDetail.isNotBlank() -> "Last voice: " + voiceDetail
                 else -> ""
             }

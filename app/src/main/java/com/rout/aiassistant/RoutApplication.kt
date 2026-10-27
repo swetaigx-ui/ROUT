@@ -7,6 +7,8 @@ import android.app.NotificationManager
 class RoutApplication : Application() {
     companion object {
         @Volatile var foreground: Boolean = false
+        lateinit var instance: RoutApplication
+            private set
 
         /**
          * The LIVE session lives on the Application, not the Activity ViewModel:
@@ -14,11 +16,12 @@ class RoutApplication : Application() {
          * floating UI that keeps listening - so leaving the screen must not kill it.
          * It stops only on an explicit toggle/STOP or a connection failure.
          */
-        val live: com.rout.aiassistant.voice.LiveSession by lazy { com.rout.aiassistant.voice.LiveSession() }
+        val live: com.rout.aiassistant.voice.LiveSession by lazy { com.rout.aiassistant.voice.LiveSession(instance) }
     }
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel("listening", "Listening session", NotificationManager.IMPORTANCE_LOW).apply {
