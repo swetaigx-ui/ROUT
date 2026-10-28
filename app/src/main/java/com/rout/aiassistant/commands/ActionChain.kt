@@ -51,7 +51,7 @@ object ActionChain {
         if (!reply.contains("\"actions\"")) return reply to null
         val first = Regex("\\{\\s*\"(speech|actions)\"").find(reply)?.range?.first ?: return reply to null
         val end = reply.lastIndexOf("}")
-        if (end < first) return reply to null
+        if (end < first) return reply.substring(0, first).replace("```json", "").replace("```", "").trim() to Result("", emptyList(), "reply cut off")
         val r = parse(reply.substring(first, end + 1))
         val before = reply.substring(0, first).replace("```json", "").replace("```", "").trim()
         return (before.ifEmpty { r.speech }) to r

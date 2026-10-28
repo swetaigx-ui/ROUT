@@ -161,6 +161,27 @@ class CommandRouter(
     /** Counts armed confirmations so a routine can halt at the first one (single pending slot, never auto-approved). */
     private var confirmRequests = 0
     private var contactError = ""
+    /** Last armed send/call draft, for corrections. Cleared when the action runs or after 90s. */
+    private data class Draft(val kind: String, val name: String, val body: String, val at: Long)
+    private var lastDraft: Draft? = null
+    private fun correctedDraftCommand(raw: String): String? {
+        val d = lastDraft ?: return null
+        if (System.currentTimeMillis() - d.at > 90_000) { lastDraft = null; return null }
+        val t = raw.trim().trimEnd('.', '!')
+        val neg = "(?:nahi|nahin|arre|are|no|galat)(?:\\s+nahi)?[,\\s]+"
+        // "nahi, Rohan ko" -> same body/kind, new recipient
+        Regex("^" + neg + "(?:woh\\s+|wo\\s+)?([\\p{L} ]{2,30}?)\\s+ko(?:\\s+(?:bhejo|bhej do|karo|kar do|call karo))?$", RegexOption.IGNORE_CASE).find(t)?.let { m ->
+            val n = m.groupValues[1].trim()
+            if (n.lowercase() in setOf("whatsapp", "mujhe", "mujhko")) return null
+            return if (d.kind == "wa") "$n ko whatsapp bhejo ${d.body}" else "$n ko whatsapp call karo"
+        }
+        // "nahi, message ye bhejo: ..." -> same recipient, new words (messages only)
+        if (d.kind == "wa") Regex("^" + neg + "(?:message|msg)\\s+(?:ye|yeh|ye bhejo|yeh bhejo)?[:,\\s]*(.{2,300})$", RegexOption.IGNORE_CASE).find(t)?.let { m ->
+            val b = m.groupValues[1].trim().removePrefix("bhejo").trim(' ', ':', ',')
+            if (b.isNotEmpty()) return "${d.name} ko whatsapp bhejo $b"
+        }
+        return null
+    }
     /** Resolves one contact or sets contactError. Ambiguity or no match arms nothing. */
     private fun resolveContact(name: String): Triple<String, String, Long>? {
         return when (val r = ContactResolver.resolve(name, contactRows(context, name))) {
@@ -195,14 +216,24 @@ class CommandRouter(
             onClearVision()
             return "Theek hai, photo/document context hata diya."
         }
+        // Correction of the pending send/call draft: keep the task, change only the corrected field. Still re-arms the normal confirmation.
+        correctedDraftCommand(raw)?.let { return singleStep(it, localOnly).second }
         val steps = splitSteps(raw)
         if (steps.size > 1) {
-            val results = steps.map { step -> singleStep(step, localOnly) }
+            val results = ArrayList<Pair<Boolean, String>>()
+            var haltedAt = -1
+            for ((i, step) in steps.withIndex()) {
+                val before = confirmRequests
+                results.add(singleStep(step, localOnly))
+                if (confirmRequests > before) { haltedAt = i; break }   // never queue a second confirmation over the first
+            }
             if (localOnly && results.all { it.second.isBlank() }) return ""
             val ok = results.count { it.first }
             val sb = StringBuilder()
-            results.forEachIndexed { i, r -> sb.append("${i + 1}. ${r.second}") }
-            sb.append("\n$ok of ${results.size} steps completed.")
+            results.forEachIndexed { i, r -> sb.append("${i + 1}. ${r.second}\n") }
+            if (haltedAt >= 0 && haltedAt < steps.size - 1)
+                sb.append("Yahin ruki: is step ki haan/nahi ke baad baaki ${steps.size - 1 - haltedAt} step nahi chalenge - unhe dobara bolna.")
+            else sb.append("$ok of ${results.size} steps pass hue (confirmation wale step ke liye tumhari haan chahiye).")
             return sb.toString().trim()
         }
         return singleStep(raw, localOnly).second
@@ -289,7 +320,9 @@ class CommandRouter(
                 needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
             val contact = resolveContact(name) ?: return false to contactError
+            lastDraft = Draft("wa", name, body, System.currentTimeMillis())
             requestConfirmation(ConfirmRequest("whatsapp", "WhatsApp ${contact.first}: \"$body\"") {
+                lastDraft = null
                 whatsappSender(context, contact.second, body)
             })
             return true to "${contact.first} ko WhatsApp: \"$body\" - screen par confirm karo ya 'haan' bolo."
@@ -304,7 +337,9 @@ class CommandRouter(
             }
             val contact = resolveContact(name) ?: return false to contactError
             val kind = if (video) "video call" else "call"
+            lastDraft = Draft("call", name, "", System.currentTimeMillis())
             requestConfirmation(ConfirmRequest("wa-call", "WhatsApp $kind: ${contact.first} (${contact.second})?") {
+                lastDraft = null
                 whatsappCaller(context, contact.third, contact.second, video)
             })
             return true to "${contact.first} ko WhatsApp $kind karna hai - screen par confirm karo ya 'haan' bolo."
