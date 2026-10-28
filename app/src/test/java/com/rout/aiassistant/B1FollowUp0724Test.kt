@@ -23,7 +23,7 @@ class B1FollowUp0724Test {
     private val armed = ArrayList<com.rout.aiassistant.commands.ConfirmRequest>()
     private val sent = ArrayList<Pair<String, String>>()
     private val called = ArrayList<String>()
-    private val rows = listOf(
+    private var rows = listOf(
         ContactResolver.Row("Rahul Sharma", "+911111111111", 1L),
         ContactResolver.Row("Rohan Das", "+913333333333", 5L))
     private fun router(): CommandRouter {
@@ -140,5 +140,45 @@ class B1FollowUp0724Test {
         // "ro" matches both Rohan Das and Ro Das in the fake lookup only when both are present; use shared router rows
         rt.handle("nahi, zzzz ko", localOnly = true)   // no such contact
         assertEquals("unknown recipient arms nothing", 1, armed.size); assertTrue(sent.isEmpty()); assertNotNull(amb)
+    }
+
+    @Test fun cancelOrStopClearsLastConfirmedMemoryToo() = runBlocking {
+        for (f in listOf("phir se", "wahi rohan ko bhi")) {
+            armed.clear(); sent.clear()
+            val rt = router()
+            rt.handle("rahul ko whatsapp bhejo hello", localOnly = true); armed[0].action()
+            rt.clearDraft()                       // cancelPending() and stopAll() both call this
+            val r = rt.handle(f, localOnly = true)
+            assertEquals(f, 1, armed.size); assertTrue(r, r.contains("Poora bolo")); assertEquals(1, sent.size)
+        }
+    }
+
+    @Test fun videoCallIsNeverDowngradedToPlainCall() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp video call karo", localOnly = true); armed[0].action()
+        rt.handle("phir se", localOnly = true)
+        assertTrue(armed[1].description, armed[1].description.contains("video", ignoreCase = true))
+        rt.handle("wahi rohan ko bhi", localOnly = true)
+        assertTrue(armed[2].description, armed[2].description.contains("video", ignoreCase = true) && armed[2].description.contains("Rohan Das"))
+        assertTrue(called.isEmpty() || called.size == 1)
+    }
+
+    @Test fun messageWordAfterACallAsksInsteadOfChangingIntent() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp call karo", localOnly = true); armed[0].action()
+        val r = rt.handle("phir se bhejo", localOnly = true)
+        assertEquals(1, armed.size); assertTrue(r, r.contains("message nahi"))
+    }
+
+    @Test fun contactsChangedBetweenSendAndRepeatAreResolvedFresh() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp bhejo hello", localOnly = true); armed[0].action()
+        rows = rows + ContactResolver.Row("Rahul Sharma", "+919999999999", 9L)   // duplicate appeared
+        val r = rt.handle("phir se", localOnly = true)
+        assertEquals("ambiguous now: nothing armed", 1, armed.size); assertTrue(r, r.contains("ek se zyada"))
+        rows = rows.filter { it.name != "Rahul Sharma" }                           // contact deleted
+        val r2 = rt.handle("phir se", localOnly = true)
+        assertEquals(1, armed.size); assertTrue(r2, r2.contains("nahi mila"))
+        assertEquals(1, sent.size)
     }
 }

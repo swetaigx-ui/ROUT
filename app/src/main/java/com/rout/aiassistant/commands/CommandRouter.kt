@@ -216,21 +216,24 @@ class CommandRouter(
         if (again.matches(t)) {
             val d = liveLastSent() ?: return null to NEED_FULL
             val wantsCall = t.contains("call")
-            if (wantsCall && d.kind != "call") return null to "Pichla kaam call nahi tha. Poora bolo: \"<naam> ko whatsapp call karo\"."
-            if (!wantsCall && d.kind == "call") return d.name + " ko whatsapp call karo" to null
-            return if (d.kind == "wa") (d.name + " ko whatsapp bhejo " + d.body) to null else (d.name + " ko whatsapp call karo") to null
+            val isCall = d.kind == "call" || d.kind == "vcall"
+            if (wantsCall && !isCall) return null to "Pichla kaam call nahi tha. Poora bolo: \"<naam> ko whatsapp call karo\"."
+            if (t.contains("bhej") && isCall) return null to "Pichla kaam call tha, message nahi. Message ke liye poora bolo: \"<naam> ko whatsapp bhejo <message>\"."
+            val callLine = d.name + " ko whatsapp " + (if (d.kind == "vcall") "video " else "") + "call karo"
+            return if (isCall) callLine to null else (d.name + " ko whatsapp bhejo " + d.body) to null
         }
         val other = Regex("^(?:wahi|same|yahi|wahi wala)\\s+(?:message\\s+|msg\\s+)?([\\p{L} ]{2,30}?)\\s+ko\\s+bhi(?:\\s+(?:bhejo|bhej do|karo|kar do|call karo|whatsapp karo))?$").find(t)
         if (other != null) {
             val n = other.groupValues[1].trim()
             if (n in setOf("whatsapp", "mujhe", "mujhko", "usko", "isko")) return null to NEED_FULL
             val d = liveLastSent() ?: return null to NEED_FULL
-            return if (d.kind == "wa") ("$n ko whatsapp bhejo " + d.body) to null else ("$n ko whatsapp call karo") to null
+            return if (d.kind == "wa") ("$n ko whatsapp bhejo " + d.body) to null
+            else ("$n ko whatsapp " + (if (d.kind == "vcall") "video " else "") + "call karo") to null
         }
         return null
     }
     /** Called when the user cancels a pending confirmation: no correction can re-arm the cancelled draft. */
-    fun clearDraft() { lastDraft = null }
+    fun clearDraft() { lastDraft = null; lastSent = null }
     /** Test seam / explicit reset: forgets the last confirmed send. */
     fun clearLastSent() { lastSent = null }
     private fun correctedDraftCommand(raw: String): String? {
@@ -417,7 +420,7 @@ class CommandRouter(
             lastDraft = Draft("call", name, "", System.currentTimeMillis())
             requestConfirmation(ConfirmRequest("wa-call", "WhatsApp $kind: ${contact.first} (${contact.second})?") {
                 lastDraft = null
-                lastSent = Draft("call", contact.first, "", System.currentTimeMillis())
+                lastSent = Draft(if (video) "vcall" else "call", contact.first, "", System.currentTimeMillis())
                 whatsappCaller(context, contact.third, contact.second, video)
             })
             return true to "${contact.first} ko WhatsApp $kind karna hai - screen par confirm karo ya 'haan' bolo."

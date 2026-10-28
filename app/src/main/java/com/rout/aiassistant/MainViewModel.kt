@@ -390,6 +390,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         engine.stopSpeaking(); engine.stopListening()
         if (wakeEnabled.value) stopWakeSession()
         _confirm.value = null
+        if (::router.isInitialized) router.clearDraft()
         engine.setState(AssistantState.IDLE)
     }
 
