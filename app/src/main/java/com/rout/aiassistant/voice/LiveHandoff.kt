@@ -60,4 +60,10 @@ class LiveHandoff(
         if (failed) { lastEnd = "failed"; resumeRecognizer() }
         else { lastEnd = "user stop"; onUserStopped() }    // STOP / X / tile: everything stays off
     }
+
+    companion object {
+        /** Spoken when only the name was heard but LIVE cannot start (not enrolled / no mic permission / unnamed session). Says plainly what works. */
+        const val NAME_ONLY_UNAVAILABLE =
+            "Naam suna, par LIVE yahan se shuru nahi ho sakta. Naam ke saath poora command ek hi baar mein bolo, jaise 'naam YouTube kholo'."
+    }
 }

@@ -295,9 +295,10 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
                 // --- Quick controls ---
                 SettingsCard("Quick controls", onY = { sectionOffsets["Quick controls"] = it }) {
+                    val quickAssistantName by vm.assistantName.collectAsState()
                     RefSwitchRow(
                         "Hey ROUT session",
-                        "Foreground listening session with a persistent notification. No background wake word in this build. Naam save ho aur sirf naam bolo to LIVE shuru hota hai: tab mic ki awaaz AI ko jaati hai, 20 sec chup rehne par (ya 5 min baad) LIVE band hokar naam-sunna wapas aata hai; STOP/X dabane par sab band. " + (if (vm.onDeviceRecognitionAvailable && android.os.Build.VERSION.SDK_INT >= 31) "Naam pehchaan phone par (on-device) hoga jab tak phone iski language support kare; naam save ho to on-device na chale to session band rahega." else "Is phone par system recognizer use hota hai: awaaz cloud tak ja sakti hai."),
+                        "Foreground listening session with a persistent notification. No background wake word in this build. " + (if (quickAssistantName.isNotBlank()) "Sirf naam bolo to LIVE shuru hota hai: tab mic ki awaaz AI ko jaati hai, 20 sec chup rehne par (ya 5 min baad) LIVE band hokar naam-sunna wapas aata hai; STOP/X dabane par sab band. LIVE mein bhi phone command (call/message/app) har baar naam se shuru karo. " else "Naam save nahi hai: sirf 'ROUT <command>' ek hi baar mein chalta hai, LIVE yahan se shuru nahi hota. ") + (if (vm.onDeviceRecognitionAvailable && android.os.Build.VERSION.SDK_INT >= 31) "Naam pehchaan phone par (on-device) hoga jab tak phone iski language support kare; naam save ho to on-device na chale to session band rahega." else "Is phone par system recognizer use hota hai: awaaz cloud tak ja sakti hai."),
                         wakeEnabled
                     ) { on -> if (on) vm.startWakeSession() else vm.stopWakeSession() }
                     RefSwitchRow(

@@ -316,7 +316,7 @@ class VoiceEngine(
                 if (rest == null) { setState(AssistantState.IDLE); return } // not addressed to the assistant; keep loop
                 if (rest.isEmpty()) {
                     if (onNameOnly?.invoke() == true) return
-                    speak("Haan ji, bolo"); return
+                    speak(LiveHandoff.NAME_ONLY_UNAVAILABLE); return
                 }
                 setState(AssistantState.PROCESSING)
                 onFinalText(rest)

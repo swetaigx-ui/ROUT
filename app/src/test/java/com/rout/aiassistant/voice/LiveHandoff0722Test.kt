@@ -58,6 +58,7 @@ class LiveHandoff0722Test {
     @Test fun failureReturnsToOnDeviceWaiting() {
         val r = Rig(); r.h.onNameHeard(); r.liveHolds = false; r.h.onLiveEnded(failed = true)
         assertTrue(r.log.contains("resume")); assertEquals("failed", r.h.lastEnd); assertEquals(0, r.userStopped)
+        assertEquals("never two mic holders, even on a failed start", 1, r.maxHolders); assertTrue(r.recognizerHolds); assertFalse(r.liveHolds)
     }
     @Test fun canHandOffAgainAfterReturn() {
         val r = Rig(); r.h.onNameHeard(); r.t = 25_000; r.h.tick(); r.t = 26_000
@@ -65,5 +66,17 @@ class LiveHandoff0722Test {
     }
     @Test fun tickAndEndAreNoOpsWhenRecognizerOwnsMic() {
         val r = Rig(); r.h.tick(); r.h.onLiveEnded(false); r.h.onLiveEnded(true); assertTrue(r.log.isEmpty())
+    }
+
+    @Test fun silentStartWithNoAudioActivityEndsInBoundedTime() {
+        // Background mic start that "works" but delivers only silence: no heard/transcript/speaking activity at all.
+        val r = Rig(); r.h.onNameHeard()
+        for (s in 1..25) { r.t = s * 1000L; r.h.tick() }
+        assertEquals(LiveHandoff.Owner.RECOGNIZER, r.h.owner); assertEquals("silence", r.h.lastEnd)
+        assertEquals(1, r.maxHolders); assertTrue(r.recognizerHolds); assertFalse(r.liveHolds)
+    }
+    @Test fun nameOnlyUnavailableMessageSaysWhatWorks() {
+        assertTrue(LiveHandoff.NAME_ONLY_UNAVAILABLE.contains("ek hi baar"))
+        assertFalse(LiveHandoff.NAME_ONLY_UNAVAILABLE.contains("bolo."))
     }
 }
