@@ -49,6 +49,25 @@ class VoiceEngine(
     val wakeSession: StateFlow<Boolean> = _wakeSession
 
     private var recognizer: SpeechRecognizer? = null
+    private var recognizerOnDevice = false
+    /** True when a custom assistant name is saved: the name-waiting session then runs ONLY on the on-device recogniser (no cloud fallback). */
+    @Volatile var requireOnDevice = false
+    private val _wakeBlocked = MutableStateFlow("")
+    /** Non-empty when the name-waiting session was refused because on-device recognition is unavailable/unsupported. */
+    val wakeBlocked: StateFlow<String> = _wakeBlocked
+    /** Seam for tests; production asks the system. */
+    internal var onDeviceProbe: () -> Boolean = { Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context) }
+    fun onDeviceWakeSupported(): Boolean = onDeviceProbe()
+    private fun blockWake() {
+        _wakeBlocked.value = "Is phone par on-device awaaz pehchaan nahi chal rahi, isliye naam wala listening session band hai (cloud par nahi bhejungi). LIVE ya mic button haath se use kar sakte ho."
+        _recognizerMode.value = "unavailable"
+        stopWakeSession()
+        setState(AssistantState.ERROR)
+    }
+    @Volatile private var onDeviceFailed = false
+    private val _recognizerMode = MutableStateFlow("not started")
+    /** Which recogniser the last session used: "on-device" or "system-default (may use cloud)". Honest label, shown in Settings. */
+    val recognizerMode: StateFlow<String> = _recognizerMode
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     var languageTag: String = "hi-IN"
@@ -180,7 +199,16 @@ class VoiceEngine(
     fun startListening() {
         if (!recognitionAvailable) { setState(AssistantState.ERROR); return }
         stopSpeaking()
-        if (recognizer == null) recognizer = SpeechRecognizer.createSpeechRecognizer(context)
+        if (recognizer == null) {
+            // The name-waiting session prefers the ON-DEVICE recognizer (Android 13+, only when the system reports it available).
+            // Otherwise the system default recognizer is used and is labelled honestly: it may send audio to the cloud.
+            val onDevice = _wakeSession.value && Build.VERSION.SDK_INT >= 31 && !onDeviceFailed &&
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            if (requireOnDevice && !onDevice) { blockWake(); return }
+            recognizer = if (onDevice) SpeechRecognizer.createOnDeviceSpeechRecognizer(context) else SpeechRecognizer.createSpeechRecognizer(context)
+            recognizerOnDevice = onDevice
+            _recognizerMode.value = if (onDevice) "on-device" else "system-default (may use cloud)"
+        }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
@@ -188,6 +216,7 @@ class VoiceEngine(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_SUPPORTED_LANGUAGES, arrayListOf("hi-IN", "en-IN", "en-US"))
+            if (_wakeSession.value) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
         setState(AssistantState.LISTENING)
         try {
@@ -213,8 +242,10 @@ class VoiceEngine(
     }
 
     /** Continuous foreground "Hey ROUT" session. Runs only while the caller keeps it alive. */
-    fun startWakeSession() {
-        if (_wakeSession.value) return
+    fun startWakeSession(): Boolean {
+        if (_wakeSession.value) return true
+        _wakeBlocked.value = ""
+        if (requireOnDevice && !onDeviceWakeSupported()) { blockWake(); return false }
         _wakeSession.value = true
         scope.launch {
             while (_wakeSession.value) {
@@ -225,10 +256,13 @@ class VoiceEngine(
             }
             stopListening()
         }
+        return true
     }
 
     fun stopWakeSession() {
         _wakeSession.value = false
+        try { recognizer?.destroy() } catch (_: Exception) {}
+        recognizer = null; recognizerOnDevice = false
         stopListening()
     }
 
@@ -240,6 +274,14 @@ class VoiceEngine(
         override fun onEndOfSpeech() { _rms.value = 0f; if (_state.value == AssistantState.LISTENING) setState(AssistantState.PROCESSING) }
         override fun onError(error: Int) {
             _rms.value = 0f
+            // On-device recogniser cannot serve this language/model: drop it and fall back to the labelled system default.
+            if (recognizerOnDevice && (error == 12 || error == 13) && requireOnDevice) { blockWake(); return }
+            if (recognizerOnDevice && (error == 12 || error == 13)) {
+                onDeviceFailed = true
+                try { recognizer?.destroy() } catch (_: Exception) {}
+                recognizer = null; recognizerOnDevice = false
+                setState(AssistantState.IDLE); return
+            }
             if (_wakeSession.value && (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
                 setState(AssistantState.IDLE) // loop re-arms
             } else if (_wakeSession.value && error == SpeechRecognizer.ERROR_CLIENT) {

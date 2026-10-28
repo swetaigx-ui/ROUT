@@ -102,4 +102,22 @@ class WakeName0719Test {
         val higher = com.rout.aiassistant.ui.DismissTargetView.bottomOffsetPx(d, 400)
         assertFalse(com.rout.aiassistant.ui.DismissTargetView.isOver(540f, 2400f - bottom.toFloat(), 1080, 2400, higher, size))
     }
+
+    @Test fun namedWakeSessionFailsClosedWithoutOnDeviceRecognitionAndNeverFallsBackToCloud() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val eng = com.rout.aiassistant.voice.VoiceEngine(ctx, { })
+        eng.requireOnDevice = true
+        eng.onDeviceProbe = { false }
+        // Robolectric has no on-device recogniser: the session must be refused, not silently started on the default recogniser.
+        assertFalse(eng.startWakeSession())
+        assertFalse(eng.wakeSession.value)
+        assertTrue(eng.wakeBlocked.value.isNotBlank())
+        assertEquals("unavailable", eng.recognizerMode.value)
+        // no custom name saved: existing behaviour (default recogniser) is unchanged and not blocked by this gate
+        val eng2 = com.rout.aiassistant.voice.VoiceEngine(ctx, { })
+        eng2.requireOnDevice = false
+        assertTrue(eng2.startWakeSession())
+        assertEquals("", eng2.wakeBlocked.value)
+        eng2.stopWakeSession()
+    }
 }

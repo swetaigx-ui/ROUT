@@ -174,6 +174,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     val savedAssistant by vm.assistantName.collectAsState()
                     var assistantInput by remember(savedAssistant) { mutableStateOf(savedAssistant) }
                     var assistantMsg by remember { mutableStateOf("") }
+                    val wakeBlockedMsg by vm.wakeBlocked.collectAsState()
                     RefField(assistantInput, { assistantInput = it.take(20); assistantMsg = "" }, "Assistant ka naam (khali = ROUT)")
                     RefPrimaryButton("Naam save karo") {
                         scope.launch {
@@ -186,6 +187,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     }
                     Text(
                         (if (assistantMsg.isNotBlank()) assistantMsg + "\n" else "") +
+                            (if (wakeBlockedMsg.isNotBlank()) wakeBlockedMsg + "\n" else "") +
                             (if (savedAssistant.isBlank()) "Abhi: ROUT. " else "Saved: $savedAssistant. ") +
                             "Hey ROUT listening session mein sirf yahi naam bulane par ROUT sunega. LIVE mein phone ke kaam (call/message/app) bhi sirf is naam se chalenge, par LIVE chalu ho to AI saari awaaz sunta hai, naam se nahi rukta. Mic apne aap ON nahi hota. Awaaz pehchaanne mein galti ho sakti hai.",
                         color = RefDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)
@@ -295,7 +297,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 SettingsCard("Quick controls", onY = { sectionOffsets["Quick controls"] = it }) {
                     RefSwitchRow(
                         "Hey ROUT session",
-                        "Foreground listening session with a persistent notification. No background wake word in this build.",
+                        "Foreground listening session with a persistent notification. No background wake word in this build. " + (if (vm.onDeviceRecognitionAvailable && android.os.Build.VERSION.SDK_INT >= 31) "Naam pehchaan phone par (on-device) hoga jab tak phone iski language support kare; naam save ho to on-device na chale to session band rahega." else "Is phone par system recognizer use hota hai: awaaz cloud tak ja sakti hai."),
                         wakeEnabled
                     ) { on -> if (on) vm.startWakeSession() else vm.stopWakeSession() }
                     RefSwitchRow(

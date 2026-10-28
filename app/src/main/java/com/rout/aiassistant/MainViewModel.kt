@@ -113,6 +113,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val assistantState: StateFlow<AssistantState> = engine.state
     val rms: StateFlow<Float> = engine.rms
     val partial: StateFlow<String> = engine.partial
+    val recognizerMode: StateFlow<String> = engine.recognizerMode
+    val wakeBlocked: StateFlow<String> = engine.wakeBlocked
     val voiceMode: StateFlow<String> = engine.voiceMode
     val voiceDetail: StateFlow<String> = engine.voiceDetail
     // Application-owned (see RoutApplication): survives Back so the floating LIVE UI keeps working.
@@ -212,7 +214,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _aiStatus.value = providerManager().statusLabel()
             }
         }
-        viewModelScope.launch { prefs.assistantName.collect { engine.wakeName = it } }
+        viewModelScope.launch { prefs.assistantName.collect { engine.wakeName = it; engine.requireOnDevice = it.isNotBlank() } }
+        viewModelScope.launch { engine.wakeBlocked.collect { if (it.isNotBlank()) stopWakeSession() } }
         NetworkStatus.start(app)
         viewModelScope.launch {
             // restore wake session if it was enabled
@@ -366,8 +369,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startWakeSession() {
         val app = getApplication<Application>()
+        engine.requireOnDevice = assistantName.value.isNotBlank()
+        // Name-gated session: refused (no service, no mic) when on-device recognition is unavailable. Never falls back to cloud.
+        if (!engine.startWakeSession()) { viewModelScope.launch { prefs.setWakeEnabled(false) }; return }
         ContextCompat.startForegroundService(app, Intent(app, ListeningService::class.java))
-        engine.startWakeSession()
         viewModelScope.launch { prefs.setWakeEnabled(true) }
     }
 
