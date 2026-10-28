@@ -282,6 +282,57 @@ class SendCallBoundary079Test {
         assertFalse(recap, recap.contains("OTP"))
     }
 
+    @Test fun actualHttpRequestBodyNeverContainsPrivateScreenOrNotificationText() = runBlocking {
+        val bodies = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val srv = java.net.ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1"))
+        val th = Thread {
+            try {
+                while (true) {
+                    val c = srv.accept()
+                    c.use { sock ->
+                        val inp = java.io.BufferedInputStream(sock.getInputStream())
+                        fun line(): String { val sb = StringBuilder(); while (true) { val ch = inp.read(); if (ch < 0 || ch == 10) break; if (ch != 13) sb.append(ch.toChar()) }; return sb.toString() }
+                        val reqLine = line(); var len = 0
+                        while (true) { val h = line(); if (h.isEmpty()) break; if (h.lowercase().startsWith("content-length:")) len = h.substringAfter(":").trim().toInt() }
+                        val body = ByteArray(len); var n = 0; while (n < len) { val r = inp.read(body, n, len - n); if (r < 0) break; n += r }
+                        val json = when {
+                            reqLine.contains("/v1/enroll/start") -> "{\"enroll_id\":\"e1\",\"approve_url\":\"http://x\"}"
+                            reqLine.contains("/v1/enroll/complete") -> "{\"device_token\":\"tok\"}"
+                            else -> { bodies.add(body.decodeToString()); "{\"reply\":\"theek hai\"}" }
+                        }
+                        val jb = json.toByteArray()
+                        sock.getOutputStream().apply { write(("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${jb.size}\r\nConnection: close\r\n\r\n").toByteArray()); write(jb); flush() }
+                    }
+                }
+            } catch (e: Exception) { }
+        }
+        th.isDaemon = true; th.start()
+        try {
+            val base = "http://127.0.0.1:" + srv.localPort
+            val ctx = ApplicationProvider.getApplicationContext<Context>()
+            val enr = com.rout.aiassistant.ai.Enrollment(ctx)
+            val st = enr.start(base)!!
+            assertTrue(enr.complete(base, st.enrollId, st.clientSecret, 1))
+            val db = Room.inMemoryDatabaseBuilder(ctx, RoutDatabase::class.java).allowMainThreadQueries().build()
+            val T = com.rout.aiassistant.ai.ChatTurn::class
+            val hist = listOf(
+                com.rout.aiassistant.ai.ChatTurn("user", "messages padho"),
+                com.rout.aiassistant.ai.ChatTurn("rout", "Tumhari latest notifications: Bank: OTP 123456 for SECRETNOTIF."),
+                com.rout.aiassistant.ai.ChatTurn("user", "screen padho"),
+                com.rout.aiassistant.ai.ChatTurn("rout", "Screen par (sirf is device pe padha gaya, kahin nahi bheja):\nSECRETSCREEN balance 9999"),
+                com.rout.aiassistant.ai.ChatTurn("rout", "Screen ka text AI ko bheja gaya (x):\n---\nSECRETSCREEN2\n---\nJawab: ok"),
+                com.rout.aiassistant.ai.ChatTurn("user", "ordinary question about cats"),
+                com.rout.aiassistant.ai.ChatTurn("rout", "Cats sleep a lot ORDINARYMARKER"))
+            val rt = CommandRouter(ctx, db, Prefs(ctx), { ProviderManager(base, "", false, enr) }, { hist }, { armed.add(it) })
+            val out = rt.handle("mujhe ek lambi kahani sunao billi ke baare mein jo bahut chhoti ho", localOnly = false)
+            assertTrue(out, bodies.size >= 1)
+            val all = bodies.joinToString("\n")
+            assertFalse(all, all.contains("SECRETNOTIF") || all.contains("SECRETSCREEN") || all.contains("OTP") || all.contains("9999"))
+            assertTrue(all, all.contains("ORDINARYMARKER"))
+            assertTrue(all, all.contains("(private on-device result, not shared)"))
+        } finally { srv.close() }
+    }
+
     @Test fun validatedChainHaltsAtSendConfirmation() = runBlocking {
         val rt = router()
         val c = com.rout.aiassistant.commands.ActionChain.parse(

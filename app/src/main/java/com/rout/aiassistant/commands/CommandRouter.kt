@@ -174,7 +174,9 @@ class CommandRouter(
     }
     /** True for replies built from screen/notification text. Fails closed on the legacy notification prefix even after a restart. */
     internal fun isPrivateReply(text: String): Boolean =
-        text.contains("Tumhari latest notifications:") || privateReplies.any { p -> text.contains(p) }
+        text.contains("Tumhari latest notifications:") ||
+            text.contains("Screen par (sirf is device pe padha gaya") ||
+            text.contains("Screen ka text AI ko bheja gaya") || privateReplies.any { p -> text.contains(p) }
     /** What may be sent to the live voice model about a device action result. */
     fun liveSafeResult(reply: String): String = if (isPrivateReply(reply)) PRIVATE_PLACEHOLDER else reply.take(200)
     internal fun groundedRecap(h: List<ChatTurn>): String {
