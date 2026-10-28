@@ -65,6 +65,21 @@ class VoiceEngine(
         setState(AssistantState.ERROR)
     }
     @Volatile private var onDeviceFailed = false
+    /** While true (LIVE owns the mic) the recogniser must not start. */
+    @Volatile var micPaused = false
+    /** Called when the saved name is heard on its own in a name-waiting session; true = handled (hand-off to LIVE). */
+    var onNameOnly: (() -> Boolean)? = null
+    fun pauseForLive() {
+        micPaused = true
+        try { recognizer?.cancel() } catch (_: Exception) {}
+        try { recognizer?.destroy() } catch (_: Exception) {}
+        recognizer = null; recognizerOnDevice = false
+        _rms.value = 0f; _partial.value = ""
+        setState(AssistantState.IDLE)
+    }
+    fun resumeAfterLive() { micPaused = false }
+    /** True while a LIVE session holds the mic (set by the app). The recogniser never starts then, wake loop or manual tap. */
+    var liveRunning: () -> Boolean = { false }
     private val _recognizerMode = MutableStateFlow("not started")
     /** Which recogniser the last session used: "on-device" or "system-default (may use cloud)". Honest label, shown in Settings. */
     val recognizerMode: StateFlow<String> = _recognizerMode
@@ -198,6 +213,7 @@ class VoiceEngine(
 
     fun startListening() {
         if (!recognitionAvailable) { setState(AssistantState.ERROR); return }
+        if (micPaused || liveRunning()) return
         stopSpeaking()
         if (recognizer == null) {
             // The name-waiting session prefers the ON-DEVICE recognizer (Android 13+, only when the system reports it available).
@@ -249,7 +265,7 @@ class VoiceEngine(
         _wakeSession.value = true
         scope.launch {
             while (_wakeSession.value) {
-                if (_state.value == AssistantState.IDLE || _state.value == AssistantState.ERROR) {
+                if (!micPaused && !liveRunning() && (_state.value == AssistantState.IDLE || _state.value == AssistantState.ERROR)) {
                     startListening()
                 }
                 delay(800)
@@ -298,7 +314,10 @@ class VoiceEngine(
             if (_wakeSession.value) {
                 val rest = WakeName.match(said, wakeName)
                 if (rest == null) { setState(AssistantState.IDLE); return } // not addressed to the assistant; keep loop
-                if (rest.isEmpty()) { speak("Haan ji, bolo"); return }
+                if (rest.isEmpty()) {
+                    if (onNameOnly?.invoke() == true) return
+                    speak("Haan ji, bolo"); return
+                }
                 setState(AssistantState.PROCESSING)
                 onFinalText(rest)
             } else {

@@ -100,6 +100,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val enrollment = Enrollment(app)
 
+    /** LIVE can be started from a name hit only when enrolled (it already has the user's mic + AI consent from the Live flow). */
+    private fun handoffReady(): Boolean = backendUrl.value.isNotBlank() && !(enrollment.deviceToken.isNullOrBlank()) &&
+        ContextCompat.checkSelfPermission(getApplication<Application>(), android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    val handoff = com.rout.aiassistant.voice.LiveHandoff(
+        pauseRecognizer = { engine.pauseForLive() },
+        // The mic foreground service that is already running (listening service) keeps the mic legal: no activity needed.
+        startLive = { viewModelScope.launch { live.start(backendUrl.value, enrollment.deviceToken ?: "", personaMode.value, prefs.voiceName.first()) } },
+        stopLive = { live.stop() },
+        resumeRecognizer = { engine.resumeAfterLive() },
+        onUserStopped = { engine.resumeAfterLive(); stopWakeSession() }
+    )
+
     private val _enrollState = MutableStateFlow("idle") // idle | waiting | enrolled | failed
     val enrollState: StateFlow<String> = _enrollState
 
@@ -216,6 +228,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch { prefs.assistantName.collect { engine.wakeName = it; engine.requireOnDevice = it.isNotBlank() } }
         viewModelScope.launch { engine.wakeBlocked.collect { if (it.isNotBlank()) stopWakeSession() } }
+        engine.liveRunning = { live.state.value == "live" || live.state.value == "connecting" }
+        engine.onNameOnly = {
+            // Only the on-device name-waiting session (saved name) can hand off; the legacy unnamed session never does.
+            if (engine.requireOnDevice && engine.recognizerMode.value == "on-device" && handoffReady()) handoff.onNameHeard() else false
+        }
+        viewModelScope.launch {
+            live.state.collect { st ->
+                if (st == "off") handoff.onLiveEnded(failed = false)
+                else if (st == "failed") handoff.onLiveEnded(failed = true)
+            }
+        }
+        viewModelScope.launch { live.heard.collect { handoff.onActivity() } }
+        viewModelScope.launch { live.transcript.collect { handoff.onActivity() } }
+        viewModelScope.launch { live.speaking.collect { handoff.onActivity() } }
+        viewModelScope.launch { while (true) { kotlinx.coroutines.delay(1000); handoff.tick() } }
         NetworkStatus.start(app)
         viewModelScope.launch {
             // restore wake session if it was enabled
