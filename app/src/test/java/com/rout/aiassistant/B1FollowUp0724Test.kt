@@ -37,21 +37,73 @@ class B1FollowUp0724Test {
     }
     private val followUps = listOf("phir se", "wahi rohan ko bhi", "wahi message rohan ko bhi bhejo", "dobara bhejo", "wapas call karo", "same rohan ko bhi", "usko bhi bhej do")
 
-    @Test fun followUpsAfterAConfirmedSendArmAndSendNothing() = runBlocking {
+    @Test fun followUpsWithNothingConfirmedYetAskAndArmNothing() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp bhejo hello", localOnly = true)   // armed, NOT confirmed
+        for (f in followUps) {
+            val r = rt.handle(f, localOnly = true)
+            assertEquals("armed by: " + f, 1, armed.size)
+            if (f != "usko bhi bhej do") assertTrue(f + " -> " + r, r.contains("Poora bolo"))
+        }
+        assertTrue(sent.isEmpty()); assertTrue(called.isEmpty())
+    }
+
+    @Test fun phirSeAfterConfirmedSendRearmsFreshConfirmationNeverSends() = runBlocking {
         val rt = router()
         rt.handle("rahul ko whatsapp bhejo hello", localOnly = true)
         armed[0].action()
-        for (f in followUps) { rt.handle(f, localOnly = true); assertEquals("armed by: " + f + " -> " + armed.last().description, 1, armed.size) }
-        assertEquals("only the one confirmed send", 1, sent.size)
-        assertEquals("nothing newly armed by a follow-up", 1, armed.size)
-        assertTrue(called.isEmpty())
+        rt.handle("phir se", localOnly = true)
+        assertEquals(2, armed.size); assertEquals("nothing sent by the follow-up itself", 1, sent.size)
+        assertTrue(armed[1].description, armed[1].description.contains("Rahul Sharma") && armed[1].description.contains("hello"))
+        armed[1].action()
+        assertEquals(2, sent.size)
     }
 
-    @Test fun followUpsWhileADraftIsPendingChangeNothing() = runBlocking {
+    @Test fun wahiOtherPersonKeepsWordsButResolvesRecipientFreshAndConfirms() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp bhejo kal milte hain", localOnly = true)
+        armed[0].action()
+        for (f in listOf("wahi rohan ko bhi", "wahi message rohan ko bhi bhejo", "same rohan ko bhi")) {
+            rt.handle(f, localOnly = true)
+            val d = armed.last().description
+            assertTrue(f + " -> " + d, d.contains("Rohan Das") && d.contains("kal milte hain"))
+        }
+        assertEquals("only the first, user-confirmed send", 1, sent.size)
+    }
+
+    @Test fun followUpRecipientUnknownOrAmbiguousAsksAndArmsNothing() = runBlocking {
         val rt = router()
         rt.handle("rahul ko whatsapp bhejo hello", localOnly = true)
-        for (f in followUps) { rt.handle(f, localOnly = true); assertEquals("armed by: " + f + " -> " + armed.last().description, 1, armed.size) }
-        assertTrue(sent.isEmpty()); assertTrue(called.isEmpty())
+        armed[0].action()
+        val n = armed.size
+        val r = rt.handle("wahi zzzz ko bhi", localOnly = true)
+        assertEquals(n, armed.size); assertTrue(r, r.contains("nahi mila"))
+        assertEquals(1, sent.size)
+    }
+
+    @Test fun followUpForgottenAfterExpiryOrClearAsksForEverything() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp bhejo hello", localOnly = true)
+        armed[0].action()
+        rt.clearLastSent()
+        val r = rt.handle("phir se", localOnly = true)
+        assertEquals(1, armed.size); assertTrue(r, r.contains("Poora bolo"))
+        rt.handle("rahul ko whatsapp bhejo hello", localOnly = true); armed[1].action()
+        rt.followUpWindowMs = 0
+        Thread.sleep(5)
+        val r2 = rt.handle("wahi rohan ko bhi", localOnly = true)
+        assertEquals(2, armed.size); assertTrue(r2, r2.contains("Poora bolo"))
+    }
+
+    @Test fun callFollowUpNeverTurnsIntoAMessageAndViceVersa() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp call karo", localOnly = true); armed[0].action()
+        rt.handle("phir se", localOnly = true)
+        assertTrue("call re-arm", armed[1].description.contains("call", ignoreCase = true) && armed[1].description.contains("Rahul Sharma"))
+        assertTrue(sent.isEmpty())
+        rt.handle("wahi rohan ko bhi", localOnly = true)
+        assertTrue(armed[2].description.contains("Rohan Das") && armed[2].description.contains("call", ignoreCase = true))
+        assertTrue(sent.isEmpty())
     }
 
     @Test fun expiredDraftCannotBeCorrectedIntoANewSend() = runBlocking {
