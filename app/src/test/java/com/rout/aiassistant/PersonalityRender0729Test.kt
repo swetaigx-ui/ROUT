@@ -55,4 +55,22 @@ class PersonalityRender0729Test {
         composeRule.onNodeWithText("Speech speed", substring = true).performScrollTo(); shot("personality_e_after_voice_0729.png")
         composeRule.onNodeWithText("Mode badalta hai ROUT KAISE", substring = true).performScrollTo(); shot("personality_f_persona_default_0729.png")
     }
+
+    private fun precedence(persona: String, file: String) {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        lateinit var vm: MainViewModel
+        composeRule.runOnUiThread { vm = MainViewModel(app) }
+        kotlinx.coroutines.runBlocking {
+            vm.prefs.setPersonality(PersonalitySettings(mode = PMode.WAIFU, romanticOn = true, affection = 3, jealousy = 2, playfulAnger = true))
+            vm.prefs.setPersonaMode(persona)
+        }
+        composeRule.waitForIdle(); Thread.sleep(500)
+        composeRule.setContent { com.rout.aiassistant.ui.screens.SettingsScreen(vm, rememberNavController()) }
+        composeRule.waitForIdle(); Thread.sleep(500); composeRule.waitForIdle()
+        composeRule.onNodeWithText("Mode badalta hai ROUT KAISE", substring = true).performScrollTo()
+        composeRule.onNodeWithText("Stop", substring = false).performScrollTo()
+        shot(file)
+    }
+    @Test fun precedenceProfessionalPersona() = precedence("professional", "personality_g_persona_professional_0729.png")
+    @Test fun precedenceWaifuPersona() = precedence("waifu", "personality_h_persona_waifu_0729.png")
 }
