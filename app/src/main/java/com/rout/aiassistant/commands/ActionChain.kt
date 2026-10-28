@@ -43,4 +43,19 @@ object ActionChain {
         }
         return Result(speech, steps, null)
     }
+
+    const val HINT = "\n\n[ROUT note, not from the user: only if the user asked for a multi-step phone action, you may add ONE final JSON object {\"speech\":\"short reply\",\"actions\":[{\"type\":\"OPEN_APP\",\"app\":\"youtube\"}]} using only OPEN_APP(app), GLOBAL_NAV(target back|home|recents), SCROLL(direction up|down), CLICK_NODE(label), SEND_WHATSAPP(contact,message), MAKE_CALL(contact). Max 6 actions. Otherwise answer normally with no JSON.]"
+
+    /** Splits a model reply into visible text and an optional chain. The chain is untrusted: it only proposes steps. */
+    fun extract(reply: String): Pair<String, Result?> {
+        val i = reply.lastIndexOf("{\"")
+        if (i < 0 || !reply.contains("\"actions\"")) return reply to null
+        val first = reply.indexOf("{\"speech\"").let { if (it >= 0) it else reply.indexOf("{\"actions\"") }
+        if (first < 0) return reply to null
+        val end = reply.lastIndexOf("}")
+        if (end < first) return reply to null
+        val r = parse(reply.substring(first, end + 1))
+        val before = reply.substring(0, first).replace("```json", "").replace("```", "").trim()
+        return (before.ifEmpty { r.speech }) to r
+    }
 }

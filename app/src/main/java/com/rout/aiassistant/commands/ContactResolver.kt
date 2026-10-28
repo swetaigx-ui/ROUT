@@ -39,4 +39,18 @@ object ContactResolver {
 
     fun ambiguousMessage(query: String, options: List<String>) =
         "\"$query\" ke liye ek se zyada contact mile: ${options.joinToString(", ")}. Poora naam ya number bolo - abhi kuch nahi bheja ya lagaya."
+
+    /** Email variant: rows are (name, address, id). Same rules: unique person with unique address only. */
+    fun resolveEmail(query: String, rows: List<Row>): Result {
+        val q = fold(query)
+        if (q.isEmpty()) return Result.None
+        val m = rows.filter { fold(it.name).contains(q) && it.number.contains("@") }
+        if (m.isEmpty()) return Result.None
+        val exact = m.filter { fold(it.name) == q }
+        val pool = if (exact.isNotEmpty()) exact else m
+        val addrs = pool.distinctBy { fold(it.number) }
+        if (addrs.size > 1) return Result.Ambiguous(addrs.take(5).map { "${it.name} (${it.number})" })
+        val r = addrs.first()
+        return Result.Unique(r.name, r.number, r.id)
+    }
 }

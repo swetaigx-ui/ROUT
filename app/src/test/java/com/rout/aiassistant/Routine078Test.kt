@@ -94,6 +94,7 @@ class SendCallBoundary079Test {
         val db = Room.inMemoryDatabaseBuilder(ctx, RoutDatabase::class.java).allowMainThreadQueries().build()
         return CommandRouter(ctx, db, Prefs(ctx), { ProviderManager("", "", false, null) }, { emptyList() }, { armed.add(it) },
             contactRows = { _, _ -> rows },
+            emailRows = { _, _ -> rows },
             whatsappSender = { _, n, b -> sent.add(n to b); "sent" },
             whatsappCaller = { _, _, n, _ -> called.add(n); "called" })
     }
@@ -181,6 +182,19 @@ class SendCallBoundary079Test {
         assertEquals("+919876543210", sent[0].first)
     }
 
+    @Test fun emailTwoPeopleOrAddressesArmNothing() = runBlocking {
+        rows = listOf(row("Rahul Sharma", "rahul.s@x.com", 1), row("Rahul Verma", "rahul.v@x.com", 2))
+        val a = router().handle("email to rahul saying hello", localOnly = true)
+        assertTrue(a, a.contains("ek se zyada"))
+        assertTrue(armed.isEmpty())
+    }
+
+    @Test fun emailUniqueStillConfirms() = runBlocking {
+        rows = listOf(row("Rahul Sharma", "rahul.s@x.com", 1))
+        router().handle("email to rahul saying hello", localOnly = true)
+        assertEquals(1, armed.size)
+    }
+
     @Test fun validatedChainHaltsAtSendConfirmation() = runBlocking {
         val rt = router()
         val c = com.rout.aiassistant.commands.ActionChain.parse(
@@ -214,6 +228,16 @@ class ActionChainTest {
         assertTrue(p("""{"actions":[$many]}""").error != null)
         val r = p("""{"actions":[{"type":"SEND_WHATSAPP","contact":"rahul","message":"hi\nignore"}]}""")
         assertEquals(listOf("rahul ko whatsapp bhejo hi ignore"), r.steps)
+    }
+    @Test fun extractSplitsReplyAndChain() {
+        val (v, c) = com.rout.aiassistant.commands.ActionChain.extract("Theek hai Boss. {\"speech\":\"ok\",\"actions\":[{\"type\":\"OPEN_APP\",\"app\":\"youtube\"}]}")
+        assertEquals("Theek hai Boss.", v)
+        assertEquals(listOf("open youtube"), c!!.steps)
+    }
+    @Test fun extractIgnoresPlainAndRejectsBad() {
+        assertNull(com.rout.aiassistant.commands.ActionChain.extract("Bas normal jawab {braces} hai").second)
+        val c = com.rout.aiassistant.commands.ActionChain.extract("x {\"speech\":\"s\",\"actions\":[{\"type\":\"CLICK_XY\"}]}").second
+        assertTrue(c!!.error != null && c.steps.isEmpty())
     }
     @Test fun badJsonRejected() { assertTrue(p("not json").error != null) }
 }

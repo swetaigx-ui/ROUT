@@ -153,6 +153,7 @@ class CommandRouter(
     private val onClearVision: () -> Unit = {},
     /** Seams so tests can prove the send/call confirmation boundary without real contacts or sends. */
     private val contactRows: (Context, String) -> List<ContactResolver.Row> = { c, n -> DeviceActions.queryContacts(c, n) },
+    private val emailRows: (Context, String) -> List<ContactResolver.Row> = { c, n -> DeviceActions.queryEmails(c, n) },
     private val whatsappSender: (Context, String, String) -> String = { c, num, body -> DeviceActions.whatsappMessage(c, num, body).message },
     private val whatsappCaller: (Context, Long, String, Boolean) -> String = { c, id, num, v -> DeviceActions.whatsappCall(c, id, num, v).message }
 ) {
@@ -398,8 +399,11 @@ class CommandRouter(
                 if (!has(Manifest.permission.READ_CONTACTS)) {
                     needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
                 }
-                to = DeviceActions.findContactEmail(context, to)
-                    ?: return false to "\"$toRaw\" ka email address nahi mila. Poora email address bata do, jaise \"email to name@gmail.com saying ...\"."
+                to = when (val r = ContactResolver.resolveEmail(toRaw, emailRows(context, toRaw))) {
+                    is ContactResolver.Result.Unique -> r.number
+                    is ContactResolver.Result.Ambiguous -> return false to ContactResolver.ambiguousMessage(toRaw, r.options).replace("Poora naam ya number bolo", "Poora email address bolo")
+                    ContactResolver.Result.None -> return false to "\"$toRaw\" ka email address nahi mila. Poora email address bata do, jaise \"email to name@gmail.com saying ...\"."
+                }
             }
             val toFinal = to
             requestConfirmation(ConfirmRequest("email", "Email $toFinal: \"$body\"") {
@@ -1100,8 +1104,15 @@ class CommandRouter(
                     val target = if (hasDeva) "English" else "Hindi"
                     "Translate the following into $target. Reply with ONLY the translation, no explanation.\n\n$raw"
                 }
-                when (val r = pm.provider()!!.chat(history(), effectiveRaw, visionImages())) {
-                    is AiResult.Reply -> true to r.text
+                val chainHint = if (translateOn) "" else ActionChain.HINT
+                when (val r = pm.provider()!!.chat(history(), effectiveRaw + chainHint, visionImages())) {
+                    is AiResult.Reply -> {
+                        val (visible, chain) = if (translateOn) r.text to null else ActionChain.extract(r.text)
+                        if (chain == null) true to r.text
+                        else if (chain.error != null) true to (visible + " (AI ka action plan reject hua: " + chain.error + ". Kuch nahi chalaya.)")
+                        else if (chain.steps.isEmpty()) true to visible
+                        else true to (visible + " " + runValidatedChain(chain.steps))
+                    }
                     is AiResult.SetupRequired -> false to r.message
                     is AiResult.Failure -> false to friendlyFailure(r.reason)
                 }

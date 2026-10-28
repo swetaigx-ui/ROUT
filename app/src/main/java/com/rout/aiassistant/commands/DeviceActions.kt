@@ -687,25 +687,21 @@ object DeviceActions {
     }
 
     /** First email address of the first fuzzy name-matched contact, or null. */
-    fun findContactEmail(context: Context, name: String): String? {
-        val resolver = context.contentResolver
-        val uri = ContactsContract.CommonDataKinds.Email.CONTENT_URI
-        val cur = resolver.query(uri,
-            arrayOf(ContactsContract.CommonDataKinds.Email.ADDRESS, ContactsContract.CommonDataKinds.Email.DISPLAY_NAME),
-            null, null, null) ?: return null
-        val target = name.trim().lowercase()
+    /** All email rows (name, address, id). Matching and ambiguity are decided by ContactResolver.resolveEmail. */
+    fun queryEmails(context: Context, name: String): List<ContactResolver.Row> {
+        val out = ArrayList<ContactResolver.Row>()
+        val cur = context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Email.DISPLAY_NAME, ContactsContract.CommonDataKinds.Email.ADDRESS, ContactsContract.CommonDataKinds.Email.CONTACT_ID),
+            "${ContactsContract.CommonDataKinds.Email.DISPLAY_NAME} LIKE ?", arrayOf("%${name.trim()}%"), null) ?: return out
         cur.use {
-            val addrI = it.getColumnIndex(ContactsContract.CommonDataKinds.Email.ADDRESS)
-            val nameI = it.getColumnIndex(ContactsContract.CommonDataKinds.Email.DISPLAY_NAME)
-            while (it.moveToNext()) {
-                val dn = it.getString(nameI)?.lowercase() ?: continue
-                if (dn.contains(target) || target.contains(dn)) {
-                    val addr = it.getString(addrI)
-                    if (!addr.isNullOrBlank()) return addr
-                }
+            while (it.moveToNext() && out.size < 50) {
+                val n = it.getString(0) ?: continue
+                val a = it.getString(1) ?: continue
+                out.add(ContactResolver.Row(n, a, it.getLong(2)))
             }
         }
-        return null
+        return out
     }
 
     /** Song recognition: Google's sound search -> Shazam -> Google app (honest 1-tap path). */
