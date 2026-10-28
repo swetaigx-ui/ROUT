@@ -25,6 +25,17 @@ object ScreenControl {
         object Home : Intent()
         object Recents : Intent()
         object ReadScreenLocal : Intent()
+        object Notifications : Intent()
+        object QuickSettings : Intent()
+        object LockScreen : Intent()
+        object SystemScreenshot : Intent()
+        data class LongPress(val target: String) : Intent()
+        data class TypeText(val text: String) : Intent()
+        data class WaitFor(val text: String) : Intent()
+        data class Swipe(val dir: String) : Intent()
+        data class TapXY(val x: Float, val y: Float, val double: Boolean) : Intent()
+        data class DragXY(val x1: Float, val y1: Float, val x2: Float, val y2: Float) : Intent()
+        data class Pinch(val zoomIn: Boolean) : Intent()
         data class AskAiAboutScreen(val question: String) : Intent()
     }
 
@@ -32,6 +43,22 @@ object ScreenControl {
     private val SEND_LIKE = listOf("send", "bhej", "submit", "pay", "transfer", "share", "post", "upload")
 
     fun parse(t: String): Intent? {
+        Regex("^(double tap|tap) at (\\d{1,4}) (\\d{1,4})\$").find(t)?.let {
+            return Intent.TapXY(it.groupValues[2].toFloat(), it.groupValues[3].toFloat(), it.groupValues[1].startsWith("double"))
+        }
+        Regex("^drag from (\\d{1,4}) (\\d{1,4}) to (\\d{1,4}) (\\d{1,4})\$").find(t)?.let {
+            val v = it.groupValues.drop(1).map { n -> n.toFloat() }
+            return Intent.DragXY(v[0], v[1], v[2], v[3])
+        }
+        Regex("^(?:pinch|zoom) (in|out)\$").find(t)?.let { return Intent.Pinch(it.groupValues[1] == "in") }
+        Regex("^(?:notifications kholo|notification panel kholo|notification dikhao|open notifications)\$").find(t)?.let { return Intent.Notifications }
+        Regex("^(?:quick settings kholo|quick settings|open quick settings)\$").find(t)?.let { return Intent.QuickSettings }
+        Regex("^(?:screen lock karo|phone lock karo|lock screen|lock the phone)\$").find(t)?.let { return Intent.LockScreen }
+        Regex("^(?:screenshot lo|screenshot le lo|take a screenshot|screenshot)\$").find(t)?.let { return Intent.SystemScreenshot }
+        Regex("^(?:long press|lamba dabao|long dabao) (.+)\$").find(t)?.let { return Intent.LongPress(it.groupValues[1].trim()) }
+        Regex("^(?:type karo|screen par type karo) (.+)\$").find(t)?.let { return Intent.TypeText(it.groupValues[1].trim()) }
+        Regex("^(?:wait for|intezaar karo|ruko jab tak) (.+?)(?: dikhe| aaye)?\$").find(t)?.let { return Intent.WaitFor(it.groupValues[1].trim()) }
+        Regex("^swipe (left|right)\$").find(t)?.let { return Intent.Swipe(it.groupValues[1]) }
         Regex("^(?:back dabao|back karo|piche jao|peeche jao|wapas jao|go back|back)\$").find(t)?.let { return Intent.Back }
         Regex("^(?:home jao|home screen|home dabao|go home)\$").find(t)?.let { return Intent.Home }
         Regex("^(?:recents|recent apps|recent apps kholo|app switcher kholo|open recents)\$").find(t)?.let { return Intent.Recents }
@@ -67,6 +94,23 @@ object ScreenControl {
             is Intent.Back -> if (svc.back()) "Done - back." else blockedOrFail(svc)
             is Intent.Home -> if (svc.home()) "Done - home." else "Home nahi ho paya."
             is Intent.Recents -> if (svc.recents()) "Done - recent apps." else "Recent apps nahi khul paye."
+            is Intent.Notifications -> if (svc.notifications()) "Done - notifications khol diye." else "Notifications nahi khul paye."
+            is Intent.QuickSettings -> if (svc.quickSettings()) "Done - quick settings khul gayi." else "Quick settings nahi khul payi."
+            is Intent.LockScreen -> if (svc.lockScreen()) "Done - screen lock." else "Is phone par lock action nahi chala (Android 9+ chahiye ya phone ne roka)."
+            is Intent.SystemScreenshot -> if (svc.systemScreenshot()) "Screenshot ka command diya. Phone ne save kiya ya nahi, gallery mein check karna." else "Screenshot command nahi chala."
+            is Intent.LongPress -> if (svc.isSensitiveScreen()) BLOCKED
+                else if (svc.longPressNamed(intent.target)) "Done - '${intent.target}' long press kiya." else "'${intent.target}' long press ke liye nahi mila."
+            is Intent.TypeText -> if (svc.isSensitiveScreen()) BLOCKED
+                else if (svc.typeIntoFocused(intent.text)) "Done - type kar diya. Send nahi kiya." else "Koi normal text box focus mein nahi mila."
+            is Intent.WaitFor -> if (svc.isSensitiveScreen()) BLOCKED
+                else if (svc.waitForText(intent.text, 8000)) "'${intent.text}' screen par aa gaya." else "8 second mein '${intent.text}' nahi dikha."
+            is Intent.Swipe -> if (svc.swipe(intent.dir)) "Done - swipe ${intent.dir}." else blockedOrFail(svc)
+            is Intent.TapXY -> if (svc.isSensitiveScreen()) BLOCKED
+                else if (svc.tapXY(intent.x, intent.y, intent.double)) "Gesture bheja (${intent.x.toInt()}, ${intent.y.toInt()}). App ne kya kiya wo screen par dekho." else "Gesture nahi chala."
+            is Intent.DragXY -> if (svc.isSensitiveScreen()) BLOCKED
+                else if (svc.dragXY(intent.x1, intent.y1, intent.x2, intent.y2)) "Drag gesture bheja. Screen par dekho." else "Drag nahi chala."
+            is Intent.Pinch -> if (svc.isSensitiveScreen()) BLOCKED
+                else if (svc.pinch(intent.zoomIn)) "Pinch ${if (intent.zoomIn) "in" else "out"} gesture bheja. Zoom hua ya nahi screen par dekho." else "Pinch nahi chala."
             is Intent.Scroll -> when {
                 svc.isSensitiveScreen() -> BLOCKED
                 svc.scroll(intent.forward) -> "Done - scroll ${if (intent.forward) "neeche" else "upar"}."

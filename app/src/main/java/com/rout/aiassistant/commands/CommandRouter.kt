@@ -205,11 +205,19 @@ class CommandRouter(
             return true to DeviceActions.visibleAppsReport(context)
         }
 
+        // --- Exact global phone actions must win over generic "X kholo"/settings routes ---
+        ScreenControl.parse(t)?.let { early ->
+            if (early is ScreenControl.Intent.Notifications || early is ScreenControl.Intent.QuickSettings ||
+                early is ScreenControl.Intent.LockScreen || early is ScreenControl.Intent.SystemScreenshot) {
+                return true to ScreenControl.execute(early, ::askAiAboutScreen)
+            }
+        }
+
         // --- App launching by trailing verb: "youtube kholo", "whatsapp khol do", "translate chalao" ---
         // Checked before every search rule so a named app opens instead of being searched.
         val openTarget = extractOpenTarget(t)
         if (openTarget != null &&
-            !openTarget.contains("search") && !Regex("^(?:torch|flashlight|flash|batti|wifi|wi-fi|bluetooth|bt|hotspot|dnd|mobile data|internet|alarm|timer|screenshot)\\b").containsMatchIn(openTarget) && !openTarget.startsWith("youtube par") && !openTarget.startsWith("youtube pe") &&
+            !openTarget.contains("search") && !Regex("^(?:torch|flashlight|flash|batti|wifi|wi-fi|bluetooth|bt|hotspot|dnd|mobile data|internet|alarm|timer|screenshot|notifications?|quick settings)\\b").containsMatchIn(openTarget) && !openTarget.startsWith("youtube par") && !openTarget.startsWith("youtube pe") &&
             !openTarget.contains("\u0938\u0930\u094d\u091a")) {
             sayFirst("$openTarget khol rahi hoon")
             val r = DeviceActions.openApp(context, openTarget)
@@ -886,9 +894,22 @@ class CommandRouter(
 
         // --- Screen control (user-enabled accessibility service; approved scope) ---
         ScreenControl.parse(t)?.let { intent ->
-            if (intent is ScreenControl.Intent.Tap && ScreenControl.isSendLike(intent.target)) {
+            val sendTarget = when (intent) {
+                is ScreenControl.Intent.Tap -> intent.target
+                is ScreenControl.Intent.LongPress -> intent.target
+                else -> null
+            }
+            val blindGesture = intent is ScreenControl.Intent.TapXY || intent is ScreenControl.Intent.DragXY
+            if (blindGesture) {
+                requestConfirmation(ConfirmRequest("screen-gesture",
+                    "Ye gesture current screen par bina label dekhe chalega aur kuch bhej/commit kar sakta hai. Karoon?") {
+                    ScreenControl.execute(intent, ::askAiAboutScreen)
+                })
+                return true to "Confirm on screen - coordinate gesture se pehle aapki permission chahiye."
+            }
+            if (sendTarget != null && ScreenControl.isSendLike(sendTarget)) {
                 requestConfirmation(ConfirmRequest("screen-tap",
-                    "'${intent.target}' tap karne se kuch bheja ya post ho sakta hai. Karoon?") {
+                    "'$sendTarget' tap karne se kuch bheja ya post ho sakta hai. Karoon?") {
                     ScreenControl.execute(intent, ::askAiAboutScreen)
                 })
                 return true to "Confirm on screen - tap karne se pehle aapki permission chahiye."
