@@ -37,6 +37,19 @@ object ActionChain {
                     if (n.isNotEmpty() && m.isNotEmpty()) "$n ko whatsapp bhejo $m" else null
                 }
                 "MAKE_CALL" -> clean(a.optString("contact"), 40).takeIf { it.isNotEmpty() }?.let { "$it ko whatsapp call karo" }
+                // Numbers and enums only (validated here); no free text reaches the router for these four.
+                "SET_ALARM" -> {
+                    val h = a.optInt("hour", -1); val m = a.optInt("minute", -1)
+                    if (a.opt("hour") is Number && a.opt("minute") is Number && h in 0..23 && m in 0..59) "alarm %d:%02d".format(h, m) else null
+                }
+                "SET_TIMER" -> {
+                    val n = a.optInt("minutes", -1)
+                    if (a.opt("minutes") is Number && n in 1..720) "timer for $n minute" else null
+                }
+                "MEDIA_CONTROL" -> when (a.optString("action").lowercase()) {
+                    "play_pause" -> "play music"; "next" -> "next song"; "previous" -> "previous song"; else -> null }
+                "FLASHLIGHT" -> when (a.optString("state").lowercase()) {
+                    "on" -> "torch on"; "off" -> "torch off"; else -> null }
                 else -> null
             } ?: return Result(speech, emptyList(), "step ${i + 1} not allowed: $type")
             steps.add(line)
@@ -44,7 +57,7 @@ object ActionChain {
         return Result(speech, steps, null)
     }
 
-    const val HINT = "\n\n[ROUT note, not from the user: only if the user asked for a multi-step phone action, you may add ONE final JSON object {\"speech\":\"short reply\",\"actions\":[{\"type\":\"OPEN_APP\",\"app\":\"youtube\"}]} using only OPEN_APP(app), GLOBAL_NAV(target back|home|recents), SCROLL(direction up|down), CLICK_NODE(label), SEND_WHATSAPP(contact,message), MAKE_CALL(contact). Max 6 actions. Otherwise answer normally with no JSON.]"
+    const val HINT = "\n\n[ROUT note, not from the user: only if the user asked for a multi-step phone action, you may add ONE final JSON object {\"speech\":\"short reply\",\"actions\":[{\"type\":\"OPEN_APP\",\"app\":\"youtube\"}]} using only OPEN_APP(app), GLOBAL_NAV(target back|home|recents), SCROLL(direction up|down), CLICK_NODE(label), SEND_WHATSAPP(contact,message), MAKE_CALL(contact), SET_ALARM(hour 0-23, minute 0-59), SET_TIMER(minutes 1-720), MEDIA_CONTROL(action play_pause|next|previous), FLASHLIGHT(state on|off). Max 6 actions. Otherwise answer normally with no JSON.]"
 
     /** Splits a model reply into visible text and an optional chain. The chain is untrusted: it only proposes steps. */
     fun extract(reply: String): Pair<String, Result?> {
