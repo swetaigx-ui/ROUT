@@ -173,9 +173,21 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 SettingsCard("Assistant ka naam", onY = { sectionOffsets["Assistant ka naam"] = it }) {
                     val savedAssistant by vm.assistantName.collectAsState()
                     var assistantInput by remember(savedAssistant) { mutableStateOf(savedAssistant) }
-                    RefField(assistantInput, { assistantInput = it.take(20); vm.setAssistantName(it.take(20)) }, "Assistant ka naam (khali = ROUT)")
+                    var assistantMsg by remember { mutableStateOf("") }
+                    RefField(assistantInput, { assistantInput = it.take(20); assistantMsg = "" }, "Assistant ka naam (khali = ROUT)")
+                    RefPrimaryButton("Naam save karo") {
+                        scope.launch {
+                            val ok = vm.setAssistantName(assistantInput)
+                            assistantMsg = if (ok) "" else "Ye naam nahi chalega (kam se kam 2 akshar, 'hey' jaisa shabd nahi). Pehle wala naam wahi hai."
+                        }
+                    }
+                    if (savedAssistant.isNotBlank()) {
+                        RefPrimaryButton("Naam hatao (ROUT par wapas)") { scope.launch { vm.setAssistantName(""); assistantMsg = "" } }
+                    }
                     Text(
-                        "Listening session mein sirf yahi naam bulane par ROUT sunega. Mic apne aap ON nahi hota. Awaaz pehchaanne mein galti ho sakti hai.",
+                        (if (assistantMsg.isNotBlank()) assistantMsg + "\n" else "") +
+                            (if (savedAssistant.isBlank()) "Abhi: ROUT. " else "Saved: $savedAssistant. ") +
+                            "Hey ROUT listening session mein sirf yahi naam bulane par ROUT sunega. LIVE mein phone ke kaam (call/message/app) bhi sirf is naam se chalenge, par LIVE chalu ho to AI saari awaaz sunta hai, naam se nahi rukta. Mic apne aap ON nahi hota. Awaaz pehchaanne mein galti ho sakti hai.",
                         color = RefDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)
                     )
                 }

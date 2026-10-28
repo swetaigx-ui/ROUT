@@ -61,7 +61,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val userName = prefs.userName.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val assistantName = prefs.assistantName.stateIn(viewModelScope, SharingStarted.Eagerly, "")
-    fun setAssistantName(v: String) { viewModelScope.launch { prefs.setAssistantName(v) } }
+    suspend fun setAssistantName(v: String): Boolean = prefs.setAssistantName(v)
+    private val liveGate = com.rout.aiassistant.voice.LiveAddressGate()
     fun setUserName(v: String) { viewModelScope.launch { prefs.setUserName(v) } }
     val personaMode = prefs.personaMode.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val warbyEmotions = prefs.warbyEmotions.stateIn(viewModelScope, SharingStarted.Eagerly, true)
@@ -171,7 +172,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     t in no -> { db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter)); cancelPending(); return@launch }
                 }
             }
-            val reply = router.handle(utter, localOnly = true)
+            // With a saved assistant name, LIVE commands run only when addressed to that name (or as a short follow-up).
+            val toRun = liveGate.accept(utter, assistantName.value, System.currentTimeMillis()) ?: return@launch
+            val reply = router.handle(toRun, localOnly = true)
             if (reply.isNotBlank()) {
                 db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter))
                 db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = reply))

@@ -110,9 +110,9 @@ class LiveOverlayService : Service() {
             }
             view.onLongPress = { RoutApplication.live.stop() }
             view.onDragStart = { showDismiss() }
-            view.onDragMove = { x, y -> dismissView?.active = com.rout.aiassistant.ui.DismissTargetView.isOver(x, y, screenW(), screenH()) }
+            view.onDragMove = { x, y -> dismissView?.active = com.rout.aiassistant.ui.DismissTargetView.isOver(x, y, screenW(), fullH(), xBottom(), xSize()) }
             view.onDragEnd = { x, y ->
-                val over = com.rout.aiassistant.ui.DismissTargetView.isOver(x, y, screenW(), screenH())
+                val over = com.rout.aiassistant.ui.DismissTargetView.isOver(x, y, screenW(), fullH(), xBottom(), xSize())
                 hideDismiss()
                 // Dropped on X: end LIVE (stops the mic session and websocket) and close this service.
                 if (over) { RoutApplication.live.stop(); stopSelf() }
@@ -133,16 +133,28 @@ class LiveOverlayService : Service() {
     private var dismissView: com.rout.aiassistant.ui.DismissTargetView? = null
     private fun screenW() = resources.displayMetrics.widthPixels
     private fun screenH() = resources.displayMetrics.heightPixels
+    /** Full display height including system bars: overlay and raw touch coordinates are in this space. */
+    private fun fullH(): Int = try {
+        if (Build.VERSION.SDK_INT >= 30) wm!!.currentWindowMetrics.bounds.height() else screenH()
+    } catch (_: Exception) { screenH() }
+    private fun density() = resources.displayMetrics.density
+    /** System bottom inset (gesture bar / nav bar) from the real window metrics. */
+    private fun bottomInset(): Int = try {
+        if (Build.VERSION.SDK_INT >= 30) wm!!.currentWindowMetrics.windowInsets
+            .getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars()).bottom else 0
+    } catch (_: Exception) { 0 }
+    private fun xBottom() = com.rout.aiassistant.ui.DismissTargetView.bottomOffsetPx(density(), bottomInset())
+    private fun xSize() = com.rout.aiassistant.ui.DismissTargetView.sizePx(density())
     private fun showDismiss() {
         if (dismissView != null) return
         val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
-        val sz = com.rout.aiassistant.ui.DismissTargetView.SIZE
+        val sz = xSize()
         val lp = WindowManager.LayoutParams(sz, sz, type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT
-        ).apply { gravity = Gravity.TOP or Gravity.START; x = screenW() / 2 - sz / 2; y = screenH() - 200 - sz / 2 }
-        val v = com.rout.aiassistant.ui.DismissTargetView(this)
+        ).apply { gravity = Gravity.TOP or Gravity.START; x = screenW() / 2 - sz / 2; y = fullH() - xBottom() - sz / 2 }
+        val v = com.rout.aiassistant.ui.DismissTargetView(this).also { it.sizePx = sz }
         try { wm?.addView(v, lp); dismissView = v } catch (_: Exception) {}
     }
     private fun hideDismiss() {

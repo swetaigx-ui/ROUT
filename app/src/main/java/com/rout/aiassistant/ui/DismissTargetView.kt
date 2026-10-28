@@ -15,7 +15,8 @@ class DismissTargetView(context: Context) : View(context) {
     var active = false
         set(v) { if (field != v) { field = v; invalidate() } }
 
-    override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(SIZE, SIZE) }
+    var sizePx: Int = SIZE
+    override fun onMeasure(w: Int, h: Int) { setMeasuredDimension(sizePx, sizePx) }
 
     override fun onDraw(canvas: Canvas) {
         val c = width / 2f
@@ -27,13 +28,17 @@ class DismissTargetView(context: Context) : View(context) {
     }
 
     companion object {
+        /** Fallback size in px; the service passes a density-scaled size. */
         const val SIZE = 170
+        /** Distance of the X centre above the bottom of the usable screen: 72dp plus the system bottom inset (gesture bar / nav bar). */
+        fun bottomOffsetPx(density: Float, bottomInsetPx: Int): Int = (72f * density).toInt() + bottomInsetPx
+        fun sizePx(density: Float): Int = (64f * density).toInt().coerceAtLeast(120)
         /** True when the finger (raw screen coords) is within the X's catch radius. Bottom-centre, [bottomInset] px above the screen bottom. */
-        fun isOver(x: Float, y: Float, screenW: Int, screenH: Int, bottomInset: Int = 200): Boolean {
+        fun isOver(x: Float, y: Float, screenW: Int, screenH: Int, bottomInset: Int = 200, size: Int = SIZE): Boolean {
             if (x < 0f || y < 0f) return false
             val cx = screenW / 2f; val cy = screenH - bottomInset.toFloat()
             val dx = x - cx; val dy = y - cy
-            return dx * dx + dy * dy <= (SIZE * 0.9f) * (SIZE * 0.9f)
+            return dx * dx + dy * dy <= (size * 0.9f) * (size * 0.9f)
         }
     }
 }

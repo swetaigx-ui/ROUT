@@ -54,3 +54,17 @@ object WakeName {
         return words.drop(i).joinToString(" ").trim().trimStart(',', '.', ':', '-').trim()
     }
 }
+
+/**
+ * Gate for LIVE device commands. With no saved name every turn is allowed (unchanged default). With a saved name, a turn runs
+ * ROUT's local commands only when it starts with that name. There is NO follow-up window: a yes/no to a pending confirmation is
+ * resolved before this gate by the confirmation flow itself, and anything else (a new call or send) must name the assistant again.
+ * This gates ROUT's own on-phone actions only; the LIVE session itself still streams the mic to the model.
+ */
+class LiveAddressGate {
+    /** Returns the text to run, or null when the turn is not addressed to the saved name. */
+    fun accept(said: String, savedName: String, @Suppress("UNUSED_PARAMETER") nowMs: Long = 0L): String? {
+        if (WakeName.sanitize(savedName).isBlank() || !WakeName.isValid(savedName)) return said
+        return WakeName.match(said, savedName)?.ifEmpty { null }
+    }
+}

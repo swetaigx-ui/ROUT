@@ -57,9 +57,13 @@ class Prefs(private val context: Context) {
     val userName: Flow<String> = context.ds.data.map { it[USER_NAME] ?: "" }
     /** Spoken name for the listening session. Blank = default "ROUT". Separate from [userName] (the user's own name). */
     val assistantName: Flow<String> = context.ds.data.map { it[ASSISTANT_NAME] ?: "" }
-    suspend fun setAssistantName(v: String) = context.ds.edit {
+    /** Blank clears (back to default ROUT). An invalid name is rejected and the previous value is KEPT. Returns true when stored/cleared. */
+    suspend fun setAssistantName(v: String): Boolean {
         val s = com.rout.aiassistant.voice.WakeName.sanitize(v)
-        if (s.isBlank() || !com.rout.aiassistant.voice.WakeName.isValid(s)) it.remove(ASSISTANT_NAME) else it[ASSISTANT_NAME] = s
+        if (s.isBlank()) { context.ds.edit { it.remove(ASSISTANT_NAME) }; return true }
+        if (!com.rout.aiassistant.voice.WakeName.isValid(s)) return false
+        context.ds.edit { it[ASSISTANT_NAME] = s }
+        return true
     }
     suspend fun setUserName(v: String) = context.ds.edit { it[USER_NAME] = v.take(30) }
     val personaMode: Flow<String> = context.ds.data.map { it[PERSONA_MODE] ?: "" }

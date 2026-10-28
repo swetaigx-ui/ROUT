@@ -66,15 +66,40 @@ class WakeName0719Test {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
         val prefs = Prefs(ctx)
         prefs.setUserName("Gyan")
-        prefs.setAssistantName("  Maya! ")
+        assertTrue(prefs.setAssistantName("  Maya! "))
         assertEquals("Maya", prefs.assistantName.first())
         assertEquals("Gyan", prefs.userName.first())
-        prefs.setAssistantName("Zara")                                // edit
+        assertTrue(prefs.setAssistantName("Zara"))                    // edit
         assertEquals("Zara", prefs.assistantName.first())
-        prefs.setAssistantName("hey")                                 // invalid: stored name cleared, default applies
-        assertEquals("", prefs.assistantName.first())
-        prefs.setAssistantName("Zara"); prefs.setAssistantName("")    // clear
+        assertFalse(prefs.setAssistantName("hey"))                    // invalid: rejected, previous valid value KEPT
+        assertFalse(prefs.setAssistantName("a"))
+        assertEquals("Zara", prefs.assistantName.first())
+        assertTrue(prefs.setAssistantName(""))                        // explicit clear
         assertEquals("", prefs.assistantName.first())
         assertEquals("Gyan", prefs.userName.first())
+    }
+
+    @Test fun liveGateAllowsEverythingWithoutNameAndGatesWithName() {
+        val g = com.rout.aiassistant.voice.LiveAddressGate()
+        assertEquals("youtube kholo", g.accept("youtube kholo", "", 0L))          // default unchanged
+        val h = com.rout.aiassistant.voice.LiveAddressGate()
+        assertNull(h.accept("youtube kholo", "Maya", 1_000L))                      // not addressed
+        assertNull(h.accept("hey rout youtube kholo", "Maya", 2_000L))             // other name
+        assertEquals("youtube kholo", h.accept("hey maya youtube kholo", "Maya", 3_000L))
+        assertNull(h.accept("rohan ko call karo", "Maya", 4_000L))                 // no follow-up window: a new call must name the assistant
+        assertNull(h.accept("rohan ko message bhejo hello", "Maya", 5_000L))
+        assertNull(h.accept("maya", "Maya", 6_000L))                               // name alone runs nothing
+    }
+
+    @Test fun xTargetIsInsetAwareAndDensityScaled() {
+        val d = 2.75f
+        val bottom = com.rout.aiassistant.ui.DismissTargetView.bottomOffsetPx(d, 90)
+        assertEquals((72f * d).toInt() + 90, bottom)
+        val size = com.rout.aiassistant.ui.DismissTargetView.sizePx(d)
+        assertTrue(com.rout.aiassistant.ui.DismissTargetView.isOver(540f, 2400f - bottom.toFloat(), 1080, 2400, bottom, size))
+        assertFalse(com.rout.aiassistant.ui.DismissTargetView.isOver(540f, 2400f - bottom - 3f * size, 1080, 2400, bottom, size))
+        // a higher system inset moves the X up, so a drop at the old position no longer hits
+        val higher = com.rout.aiassistant.ui.DismissTargetView.bottomOffsetPx(d, 400)
+        assertFalse(com.rout.aiassistant.ui.DismissTargetView.isOver(540f, 2400f - bottom.toFloat(), 1080, 2400, higher, size))
     }
 }
