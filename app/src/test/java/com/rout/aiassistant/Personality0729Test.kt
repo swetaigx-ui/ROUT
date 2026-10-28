@@ -152,4 +152,21 @@ class Personality0729Test {
         assertEquals(0, PersonalitySettings.fromJson("""{"jealousy":9,"affection":-4}""").jealousy.coerceAtMost(3).let { 0 })
         assertEquals(3, PersonalitySettings.fromJson("""{"jealousy":9}""").jealousy)
     }
+
+    @Test fun calmPersonaAlwaysBeatsRomanceAndNoteSaysPersonalityOverridesPersona() {
+        val c = ctl(0.0)
+        for (id in listOf("professional", "therapist")) {
+            val e = c.effective(on, id)
+            assertTrue(e.calmMode); assertFalse(e.romanticEff || e.jealousEff || e.angerEff)
+            assertNull(c.decide("tum mujhse pyaar nahi karte", e, "G"))
+            assertTrue(c.styleNote(e, "G").contains("no romance"))
+        }
+        assertEquals(on.copy(), c.effective(on, "waifu"))        // non-calm personas do not change the settings
+        assertEquals(on, c.effective(on, ""))
+        val n = c.styleNote(on, "G")
+        assertTrue(n.contains("override any conflicting persona"))
+        assertTrue(c.styleNote(on, "G", compact = true).contains("Override any persona") && c.styleNote(on, "G", compact = true).length < 700)
+        // an explicit Professional personality stays Professional whatever the persona
+        assertEquals(PMode.PROFESSIONAL, c.effective(on.copy(mode = PMode.PROFESSIONAL), "sweetheart").mode)
+    }
 }

@@ -269,7 +269,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     if (confirmSlot.expireIfDue()) engine.setState(AssistantState.IDLE)
                 }
             },
-            styleNote = { personalityCtl.styleNote(personality.value, userName.value) },
+            styleNote = { personalityCtl.styleNote(personalityCtl.effective(personality.value, personaMode.value), userName.value) },
             onPermissionNeeded = { cmd -> pendingAfterPermission = cmd },
             visionImages = { visionDoc?.images ?: emptyList() },
             onClearVision = { visionDoc = null }
@@ -280,7 +280,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         live.onUserTurn = { utter -> onLiveUserTurn(utter) }
         // Tone-only personality settings reach the LIVE model as one compact note when a session is up and whenever they change.
         viewModelScope.launch {
-            combine(live.state, personality, userName) { st, ps, nm -> Triple(st, ps, nm) }
+            combine(live.state, personality, userName, personaMode) { st, ps, nm, pid -> Triple(st, personalityCtl.effective(ps, pid), nm) }
                 .distinctUntilChanged().collect { (st, ps, nm) ->
                     if (st == "live") personalityCtl.styleNote(ps, nm, compact = true).takeIf { it.isNotEmpty() }?.let { live.sendContextNote(it, cap = 700) }
                 }
@@ -400,7 +400,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Handles stop/resume/mode commands and local expressive replies. True when the utterance was fully handled here. */
     internal suspend fun personalityTurn(text: String, fromLive: Boolean, stopOnly: Boolean = false): Boolean {
-        val s = prefs.personalityNow()
+        val raw = prefs.personalityNow()
+        val s = personalityCtl.effective(raw, personaMode.value)   // a calm persona gates what is said; the stored choices are never overwritten by it
         val speaking = assistantState.value == AssistantState.SPEAKING || live.speaking.value
         // LIVE, before the saved-name gate: only STOP is accepted (safety). Every other personality command waits for the gate.
         if (stopOnly && !personalityCtl.isStop(text, s, speaking)) return false
@@ -408,9 +409,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val cid = conversationId.value
         db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = text))
         when (out) {
-            is com.rout.aiassistant.ai.PersonalityOutcome.Stop -> applyPersonalityStop(out.settings, out.ack, fromLive)
+            is com.rout.aiassistant.ai.PersonalityOutcome.Stop -> applyPersonalityStop(raw.copy(suspended = true), out.ack, fromLive)
             is com.rout.aiassistant.ai.PersonalityOutcome.Control -> {
-                prefs.setPersonality(out.settings)
+                val rawOut = (personalityCtl.decide(text, raw, userName.value, speaking, localOnly = fromLive) as? com.rout.aiassistant.ai.PersonalityOutcome.Control) ?: out
+                prefs.setPersonality(rawOut.settings)
                 db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = out.ack))
                 if (!fromLive) engine.speak(out.ack)
             }

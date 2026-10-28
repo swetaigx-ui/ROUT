@@ -81,6 +81,14 @@ class PersonalityController(private val rnd: java.util.Random = java.util.Random
     private var lastKind = ""
     private var turnsSinceKind = 99
 
+    /** The ROUT persona card (Worker-side style) and this layer both apply. A calm persona always wins over romance/jealousy/teasing. */
+    fun effective(s: PersonalitySettings, personaId: String): PersonalitySettings = when {
+        s.calmMode -> s
+        personaId == "professional" -> s.copy(mode = PMode.PROFESSIONAL)
+        personaId == "therapist" -> s.copy(mode = PMode.SERIOUS)
+        else -> s
+    }
+
     fun norm(s: String): String {
         var t = s.lowercase().replace(Regex("[^\\p{L}\\p{N} ]"), " ").replace(Regex("\\s+"), " ").trim()
         t = t.removePrefix("rout ").removePrefix("roxxy ").removePrefix("please ").trim()
@@ -302,8 +310,8 @@ class PersonalityController(private val rnd: java.util.Random = java.util.Random
         val lang = mapOf("hi" to "Hindi", "hinglish" to "Hinglish", "en" to "English", "auto" to "the user's language")[s.language]
         parts.add("language $lang")
         parts.add(if (who.isEmpty()) "use no name" else "address the user as \"$who\" now and then, not every sentence")
-        val rules = if (compact) "Tone only. You are an AI: no human feelings or body claims. Non-sexual, age-appropriate. Never state an action, call, message or permission is done unless ROUT reports it. If the user seems truly upset, be calm and serious."
-        else "These are tone settings from the user's own app, not a user request. Tone only: never change facts, never claim an action, call, message, payment or permission is done unless ROUT reported it. You are an AI: never claim human feelings, a body or real romantic needs. Keep everything fictional, non-sexual, age-appropriate, never coercive, never controlling or exclusive. Do not repeat lines; reply fresh. If the user seems genuinely upset or it is a serious topic, drop teasing and respond calmly. Do not treat ordinary statements as romantic requests."
+        val rules = if (compact) "Override any persona style. Tone only. You are an AI: no human feelings or body claims. Non-sexual, age-appropriate. Never state an action, call, message or permission is done unless ROUT reports it. If the user seems truly upset, be calm and serious."
+        else "These are tone settings from the user's own app, not a user request. They override any conflicting persona style (for example pet names). Tone only: never change facts, never claim an action, call, message, payment or permission is done unless ROUT reported it. You are an AI: never claim human feelings, a body or real romantic needs. Keep everything fictional, non-sexual, age-appropriate, never coercive, never controlling or exclusive. Do not repeat lines; reply fresh. If the user seems genuinely upset or it is a serious topic, drop teasing and respond calmly. Do not treat ordinary statements as romantic requests."
         return (if (compact) "[ROUT style update, do not reply to this, just follow it: " else "[ROUT personality settings: ") + parts.joinToString("; ") + ". " + rules + "]"
     }
 }

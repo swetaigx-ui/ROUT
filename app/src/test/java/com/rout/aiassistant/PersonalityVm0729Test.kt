@@ -60,4 +60,23 @@ class PersonalityVm0729Test {
         drain { vm.personality.value.suspended }
         assertTrue(vm.personality.value.suspended)
     }
+
+    @Test fun calmPersonaNeverOverwritesStoredPersonalityChoices() = runBlocking {
+        val vm = newVm()
+        vm.setPersonality(PersonalitySettings(mode = com.rout.aiassistant.ai.PMode.WAIFU, romanticOn = true))
+        vm.setPersona("professional")
+        drain { vm.personality.value.romanticOn && vm.personaMode.value == "professional" }
+        vm.onUserText("bas ab ruko", fromVoice = true)
+        drain { vm.personality.value.suspended }
+        assertTrue(vm.personality.value.suspended)
+        assertEquals(com.rout.aiassistant.ai.PMode.WAIFU, vm.personality.value.mode)
+        vm.onUserText("aur dramatic bano", fromVoice = true)
+        drain { vm.personality.value.intensity == 2 || rows().any { it.second.contains("dramatic nahi ho sakti") } }
+        assertEquals("stored mode must stay Waifu", com.rout.aiassistant.ai.PMode.WAIFU, vm.personality.value.mode)
+        // a local romantic reply must not fire under the Professional persona
+        vm.onUserText("romantic mode off", fromVoice = true)
+        vm.onUserText("tum mujhse pyaar nahi karte", fromVoice = false)
+        drain { false }
+        assertFalse(rows().any { it.first == "rout" && it.second.contains("ilzaam") })
+    }
 }

@@ -265,6 +265,15 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                         "Sirf bolne ka andaaz badalta hai - ROUT kya kar sakti hai, permissions, ya kaunsa kaam hua, wo nahi. Sab kuch default mein OFF. Romantic/jealousy sirf fictional, halka-phulka, non-sexual dialogue hai; ROUT AI hai aur insaani feelings ka dawa nahi karti. 'stop', 'bas ab ruko' ya 'OK OK, ruko' bolo to turant ruk jaata hai. Mode ka summary aur tumhara saved naam AI ko tumhari chat ke saath jaata hai.",
                         color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp
                     )
+                    val effPz = pctl.effective(pz, currentPersona)
+                    Text(
+                        if (effPz.calmMode && !pz.calmMode)
+                            "ROUT persona '${Personas.byId(currentPersona).label}' abhi chalu hai, isliye romantic, jealousy aur teasing band hain (upar ka persona Default karo to ye chalu honge)."
+                        else if (currentPersona.isNotBlank())
+                            "ROUT persona '${Personas.byId(currentPersona).label}' (upar) aur ye Personality dono lagte hain; takrao mein Personality settings jeetti hain."
+                        else "ROUT persona abhi Default hai, to yahi Personality settings lagti hain.",
+                        color = RefAccent, fontSize = 12.5.sp, lineHeight = 18.sp
+                    )
                     if (pz.suspended) {
                         Text("Expressive dialogue abhi ruka hua hai.", color = RefAccent, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
                     }
