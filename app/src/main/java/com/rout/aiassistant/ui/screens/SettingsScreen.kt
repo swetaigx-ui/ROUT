@@ -133,7 +133,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                                 modifier = Modifier.border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(20.dp))
                             ) {
                                 listOf(
-                                    "Naam" to RefIcons.User, "Connection" to RefIcons.Link,
+                                    "Naam" to RefIcons.User, "Assistant ka naam" to RefIcons.Mic, "Connection" to RefIcons.Link,
                                     "ROUT persona" to RefIcons.Spark, "ROUT voice" to RefIcons.Mic,
                                     "Quick controls" to RefIcons.Zap, "Permissions and privacy" to RefIcons.Shield,
                                     "Routines" to RefIcons.Repeat, "Weather" to RefIcons.Cloud,
@@ -168,6 +168,16 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 // --- Naam ---
                 SettingsCard("Naam", onY = { sectionOffsets["Naam"] = it }) {
                     RefField(nameInput, { nameInput = it.take(30); vm.setUserName(it.take(30)) }, "Aapka naam (optional)")
+                }
+
+                SettingsCard("Assistant ka naam", onY = { sectionOffsets["Assistant ka naam"] = it }) {
+                    val savedAssistant by vm.assistantName.collectAsState()
+                    var assistantInput by remember(savedAssistant) { mutableStateOf(savedAssistant) }
+                    RefField(assistantInput, { assistantInput = it.take(20); vm.setAssistantName(it.take(20)) }, "Assistant ka naam (khali = ROUT)")
+                    Text(
+                        "Listening session mein sirf yahi naam bulane par ROUT sunega. Mic apne aap ON nahi hota. Awaaz pehchaanne mein galti ho sakti hai.",
+                        color = RefDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)
+                    )
                 }
 
                 // --- Connection (live status) ---

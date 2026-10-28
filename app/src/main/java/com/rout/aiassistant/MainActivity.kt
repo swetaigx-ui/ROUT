@@ -16,6 +16,8 @@ import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -115,9 +117,9 @@ class MainActivity : ComponentActivity() {
             // Tapped a scheduled briefing notification - run its command once the UI is up.
             window.decorView.post { vm.onUserText(cmd, fromVoice = false) }
         }
-        if (intent?.getBooleanExtra("tile_voice", false) == true) {
-            // Quick Settings tile: straight into listening.
-            window.decorView.post { vm.onMicTap() }
+        if (intent?.getBooleanExtra("tile_live", false) == true) {
+            // Quick Settings tile: user-started LIVE from the foreground (orb follows when the app is left).
+            window.decorView.post { vm.startLiveIfIdle(); returnToPreviousAppWhenLive() }
         }
         handleShareIntent(intent)
         setContent {
@@ -148,10 +150,31 @@ class MainActivity : ComponentActivity() {
         if (result.any { it.value }) window.decorView.post { vm.onPermissionsResult() }
     }
 
+    /**
+     * Tile flow: ROUT must be visible for a moment so Android lets the mic foreground service start. Once LIVE is
+     * actually running AND the orb can be shown (mic + overlay permission already granted), send ROUT back so the user
+     * lands on the app they were in, with the orb over it. On failure or a missing permission ROUT stays on screen
+     * so the error/permission prompt is seen. No background mic workaround.
+     */
+    private fun returnToPreviousAppWhenLive() {
+        val ok = androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED && android.provider.Settings.canDrawOverlays(this)
+        if (!ok) return
+        lifecycleScope.launch {
+            var waited = 0
+            while (waited < 6000) {
+                val st = com.rout.aiassistant.RoutApplication.live.state.value
+                if (st == "live") { moveTaskToBack(true); return@launch }
+                if (st == "failed" || st == "off" && waited > 1500) return@launch
+                kotlinx.coroutines.delay(150); waited += 150
+            }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.getBooleanExtra("tile_voice", false)) {
-            window.decorView.post { vm.onMicTap() }
+        if (intent.getBooleanExtra("tile_live", false)) {
+            window.decorView.post { vm.startLiveIfIdle(); returnToPreviousAppWhenLive() }
         }
         handleShareIntent(intent)
     }

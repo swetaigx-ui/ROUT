@@ -43,6 +43,8 @@ class VoiceEngine(
     /** Human-readable, honest description of which voice last spoke and why a fallback happened. */
     val voiceDetail: StateFlow<String> = _voiceDetail
 
+    /** Name saved in Settings (blank = default "ROUT"). Only this name addresses the assistant in a listening session. */
+    @Volatile var wakeName: String = ""
     private val _wakeSession = MutableStateFlow(false)
     val wakeSession: StateFlow<Boolean> = _wakeSession
 
@@ -252,11 +254,8 @@ class VoiceEngine(
             _partial.value = ""
             if (said.isEmpty()) { setState(AssistantState.IDLE); return }
             if (_wakeSession.value) {
-                val low = said.lowercase()
-                val prefix = listOf("hey rout", "hey route", "hey rout,", "ok rout", "oye rout", "rout,", "rout ")
-                    .firstOrNull { low.startsWith(it) }
-                if (prefix == null) { setState(AssistantState.IDLE); return } // not addressed to ROUT; keep loop
-                val rest = said.substring(prefix.length).trim()
+                val rest = WakeName.match(said, wakeName)
+                if (rest == null) { setState(AssistantState.IDLE); return } // not addressed to the assistant; keep loop
                 if (rest.isEmpty()) { speak("Haan ji, bolo"); return }
                 setState(AssistantState.PROCESSING)
                 onFinalText(rest)

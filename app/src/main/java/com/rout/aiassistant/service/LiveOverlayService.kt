@@ -109,16 +109,49 @@ class LiveOverlayService : Service() {
                 startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
             view.onLongPress = { RoutApplication.live.stop() }
+            view.onDragStart = { showDismiss() }
+            view.onDragMove = { x, y -> dismissView?.active = com.rout.aiassistant.ui.DismissTargetView.isOver(x, y, screenW(), screenH()) }
+            view.onDragEnd = { x, y ->
+                val over = com.rout.aiassistant.ui.DismissTargetView.isOver(x, y, screenW(), screenH())
+                hideDismiss()
+                // Dropped on X: end LIVE (stops the mic session and websocket) and close this service.
+                if (over) { RoutApplication.live.stop(); stopSelf() }
+            }
             view.attachDrag(wm!!, lp)
             try { wm?.addView(view, lp); floatView = view } catch (_: Exception) {}
         } else if (!wantOverlay && have) {
             try { wm?.removeView(floatView) } catch (_: Exception) {}
             floatView = null
         }
-        floatView?.setSpeaking(RoutApplication.live.speaking.value)
+        floatView?.setMode(when {
+            RoutApplication.live.speaking.value -> 2
+            st == "live" -> 1
+            else -> 0
+        })
+    }
+
+    private var dismissView: com.rout.aiassistant.ui.DismissTargetView? = null
+    private fun screenW() = resources.displayMetrics.widthPixels
+    private fun screenH() = resources.displayMetrics.heightPixels
+    private fun showDismiss() {
+        if (dismissView != null) return
+        val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+        val sz = com.rout.aiassistant.ui.DismissTargetView.SIZE
+        val lp = WindowManager.LayoutParams(sz, sz, type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.TOP or Gravity.START; x = screenW() / 2 - sz / 2; y = screenH() - 200 - sz / 2 }
+        val v = com.rout.aiassistant.ui.DismissTargetView(this)
+        try { wm?.addView(v, lp); dismissView = v } catch (_: Exception) {}
+    }
+    private fun hideDismiss() {
+        dismissView?.let { try { wm?.removeView(it) } catch (_: Exception) {} }
+        dismissView = null
     }
 
     override fun onDestroy() {
+        hideDismiss()
         floatView?.let { try { wm?.removeView(it) } catch (_: Exception) {} }
         floatView = null
         super.onDestroy()

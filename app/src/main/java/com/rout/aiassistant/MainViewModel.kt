@@ -60,6 +60,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val userName = prefs.userName.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val assistantName = prefs.assistantName.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    fun setAssistantName(v: String) { viewModelScope.launch { prefs.setAssistantName(v) } }
     fun setUserName(v: String) { viewModelScope.launch { prefs.setUserName(v) } }
     val personaMode = prefs.personaMode.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val warbyEmotions = prefs.warbyEmotions.stateIn(viewModelScope, SharingStarted.Eagerly, true)
@@ -118,6 +120,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val liveTranscript: StateFlow<String> = live.transcript
     val liveHeard: StateFlow<String> = live.heard
     val liveError: StateFlow<String?> = live.error
+    /** Tile entry: start LIVE only when it is not already running (never toggles it off by accident). */
+    fun startLiveIfIdle() {
+        val st = live.state.value
+        if (st != "live" && st != "connecting") toggleLive()
+    }
     fun toggleLive() {
         val app = getApplication<Application>()
         if (live.state.value == "live" || live.state.value == "connecting") {
@@ -202,6 +209,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _aiStatus.value = providerManager().statusLabel()
             }
         }
+        viewModelScope.launch { prefs.assistantName.collect { engine.wakeName = it } }
         NetworkStatus.start(app)
         viewModelScope.launch {
             // restore wake session if it was enabled

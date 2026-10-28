@@ -24,6 +24,10 @@ class LiveFloatView(context: Context) : View(context) {
 
     var onTap: (() -> Unit)? = null
     var onLongPress: (() -> Unit)? = null
+    /** Drag callbacks (raw screen coordinates of the finger). Used by the service for the drag-to-X dismiss target. */
+    var onDragStart: (() -> Unit)? = null
+    var onDragMove: ((Float, Float) -> Unit)? = null
+    var onDragEnd: ((Float, Float) -> Unit)? = null
 
     private val palette = intArrayOf(
         Color.parseColor("#5EF2FF"), Color.parseColor("#3B82F6"), Color.parseColor("#8B5CF6"),
@@ -35,6 +39,8 @@ class LiveFloatView(context: Context) : View(context) {
     private val core = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
     @Volatile private var speaking = false
+    /** 0 = connecting, 1 = listening (session open, mic streaming), 2 = speaking (model audio arriving). Real state only. */
+    @Volatile private var mode = 1
     private var phase = 0f
     private var wm: WindowManager? = null
     private var lp: WindowManager.LayoutParams? = null
@@ -47,7 +53,8 @@ class LiveFloatView(context: Context) : View(context) {
         }
     }
 
-    fun setSpeaking(s: Boolean) { speaking = s }
+    fun setSpeaking(s: Boolean) { speaking = s; if (s) mode = 2 else if (mode == 2) mode = 1 }
+    fun setMode(m: Int) { mode = m; speaking = m == 2 }
 
     fun attachDrag(wm: WindowManager, lp: WindowManager.LayoutParams) {
         this.wm = wm; this.lp = lp
@@ -85,27 +92,41 @@ class LiveFloatView(context: Context) : View(context) {
         core.shader = RadialGradient(c, c, kr, Color.parseColor("#BFFFFFFF"), Color.TRANSPARENT, Shader.TileMode.CLAMP)
         canvas.drawCircle(c, c, kr, core)
         canvas.restore()
+        rim.color = when (mode) { 2 -> Color.parseColor("#CCFF5F7E"); 1 -> Color.parseColor("#995EF2FF"); else -> Color.parseColor("#33FFFFFF") }
+        rim.strokeWidth = if (mode == 2) 6f else 3f
         canvas.drawCircle(c, c, r, rim)
+        if (mode == 1) {
+            // listening: a slow ring that breathes outwards
+            val k = (sin(phase * 2.2f) + 1f) / 2f
+            ring.alpha = (140 * (1f - k)).toInt()
+            canvas.drawCircle(c, c, r + 4f + 10f * k, ring)
+        }
     }
+    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#5EF2FF"); style = Paint.Style.STROKE; strokeWidth = 3f }
 
     private var downX = 0f; private var downY = 0f; private var moved = false
     private var downTime = 0L
+    private var dragging = false
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val params = lp ?: return false
         when (e.action) {
-            MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; moved = false; downTime = System.currentTimeMillis(); return true }
+            MotionEvent.ACTION_CANCEL -> { if (dragging) { dragging = false; onDragEnd?.invoke(-1f, -1f) }; return true }
+            MotionEvent.ACTION_DOWN -> { dragging = false; downX = e.rawX; downY = e.rawY; moved = false; downTime = System.currentTimeMillis(); return true }
             MotionEvent.ACTION_MOVE -> {
                 if (abs(e.rawX - downX) > 12 || abs(e.rawY - downY) > 12) moved = true
+                if (moved && !dragging) { dragging = true; onDragStart?.invoke() }
                 if (moved) {
+                    onDragMove?.invoke(e.rawX, e.rawY)
                     params.x += (e.rawX - downX).toInt()
                     params.y += (e.rawY - downY).toInt()
                     downX = e.rawX; downY = e.rawY
-                    wm?.updateViewLayout(this, params)
+                    try { wm?.updateViewLayout(this, params) } catch (_: IllegalArgumentException) { }
                 }
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                if (dragging) { dragging = false; onDragEnd?.invoke(e.rawX, e.rawY) }
                 if (!moved) {
                     if (System.currentTimeMillis() - downTime > 500) onLongPress?.invoke() else onTap?.invoke()
                 }

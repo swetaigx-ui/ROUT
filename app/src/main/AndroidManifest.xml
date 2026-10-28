@@ -87,7 +87,7 @@
         <service
             android:name=".service.RoutTileService"
             android:exported="true"
-            android:label="ROUT Voice"
+            android:label="ROUT Live"
             android:icon="@drawable/ic_stat_rout"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>

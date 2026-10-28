@@ -27,6 +27,7 @@ class Prefs(private val context: Context) {
         val DEVICE_VOICE_ENABLED = booleanPreferencesKey("device_voice_enabled")
         val PERSONA_MODE = stringPreferencesKey("persona_mode")
         val USER_NAME = stringPreferencesKey("user_name")
+        val ASSISTANT_NAME = stringPreferencesKey("assistant_name")
         val WARBY_EMOTIONS = booleanPreferencesKey("warby_emotions")
         val TRANSLATE_MODE = booleanPreferencesKey("translate_mode")
         val BATTERY_ALERT = booleanPreferencesKey("battery_alert")
@@ -54,6 +55,12 @@ class Prefs(private val context: Context) {
     val devAiEnabled: Flow<Boolean> = context.ds.data.map { it[DEV_AI_ENABLED] ?: false }
     val voiceName: Flow<String> = context.ds.data.map { it[VOICE_NAME] ?: "Achernar" }
     val userName: Flow<String> = context.ds.data.map { it[USER_NAME] ?: "" }
+    /** Spoken name for the listening session. Blank = default "ROUT". Separate from [userName] (the user's own name). */
+    val assistantName: Flow<String> = context.ds.data.map { it[ASSISTANT_NAME] ?: "" }
+    suspend fun setAssistantName(v: String) = context.ds.edit {
+        val s = com.rout.aiassistant.voice.WakeName.sanitize(v)
+        if (s.isBlank() || !com.rout.aiassistant.voice.WakeName.isValid(s)) it.remove(ASSISTANT_NAME) else it[ASSISTANT_NAME] = s
+    }
     suspend fun setUserName(v: String) = context.ds.edit { it[USER_NAME] = v.take(30) }
     val personaMode: Flow<String> = context.ds.data.map { it[PERSONA_MODE] ?: "" }
     val warbyEmotions: Flow<Boolean> = context.ds.data.map { it[WARBY_EMOTIONS] ?: true }
