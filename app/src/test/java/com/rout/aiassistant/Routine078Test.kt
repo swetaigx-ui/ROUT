@@ -239,5 +239,12 @@ class ActionChainTest {
         val c = com.rout.aiassistant.commands.ActionChain.extract("x {\"speech\":\"s\",\"actions\":[{\"type\":\"CLICK_XY\"}]}").second
         assertTrue(c!!.error != null && c.steps.isEmpty())
     }
+    @Test fun extractHandlesRealFencedModelReplies() {
+        val real = "Ji Boss, YouTube khol kar neeche scroll kar raha hoon.\n\n```json\n{\n  \"speech\": \"Ji Boss\",\n  \"actions\": [\n    {\"type\": \"OPEN_APP\", \"app\": \"youtube\"},\n    {\"type\": \"SCROLL\", \"direction\": \"down\"}\n  ]\n}\n```"
+        val c = com.rout.aiassistant.commands.ActionChain.extract(real).second!!
+        assertEquals(listOf("open youtube", "scroll down"), c.steps)
+        val call = "Rahul ko call mila raha hoon.\n```json\n{\"speech\":\"x\",\"actions\":[{\"type\":\"MAKE_CALL\",\"contact\":\"Rahul\"}]}\n```"
+        assertEquals(listOf("Rahul ko whatsapp call karo"), com.rout.aiassistant.commands.ActionChain.extract(call).second!!.steps)
+    }
     @Test fun badJsonRejected() { assertTrue(p("not json").error != null) }
 }

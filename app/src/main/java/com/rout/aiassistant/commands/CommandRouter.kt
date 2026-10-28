@@ -1111,7 +1111,7 @@ class CommandRouter(
                         if (chain == null) true to r.text
                         else if (chain.error != null) true to (visible + " (AI ka action plan reject hua: " + chain.error + ". Kuch nahi chalaya.)")
                         else if (chain.steps.isEmpty()) true to visible
-                        else true to (visible + " " + runValidatedChain(chain.steps))
+                        else true to ("AI ne ye plan diya: " + chain.steps.joinToString(" -> ") + ". " + runValidatedChain(chain.steps))
                     }
                     is AiResult.SetupRequired -> false to r.message
                     is AiResult.Failure -> false to friendlyFailure(r.reason)
