@@ -197,6 +197,8 @@ class CommandRouter(
     /** Last armed send/call draft, for corrections. Cleared when the action runs or after 90s. */
     private data class Draft(val kind: String, val name: String, val body: String, val at: Long)
     private var lastDraft: Draft? = null
+    /** Called when the user cancels a pending confirmation: no correction can re-arm the cancelled draft. */
+    fun clearDraft() { lastDraft = null }
     private fun correctedDraftCommand(raw: String): String? {
         val d = lastDraft ?: return null
         if (System.currentTimeMillis() - d.at > 90_000) { lastDraft = null; return null }
@@ -852,7 +854,10 @@ class CommandRouter(
             })
             return true to "${contact.first} (${contact.second}) ko call karoon? Screen par confirm karo ya 'haan' bolo."
         }
-        Regex("(?:message|sms|text)\\s+(?:to\\s+)?(\\w+)\\s*(?:saying|ki|that)?\\s*(.*)$").find(t)?.let { m ->
+        // A follow-up fragment ("wahi message rohan ko bhi bhejo") has no real words: arm nothing, never invent a body.
+        Regex("(?:message|sms|text)\\s+(?:to\\s+)?(\\w+)\\s*(?:saying|ki|that)?\\s*(.*)$").find(t)
+            ?.takeIf { m -> !Regex("^(?:ko\\b.*|bhi\\b.*|bhejo|bhej do|karo|kar do|likho)?$", RegexOption.IGNORE_CASE).matches(m.groupValues[2].trim()) }
+            ?.let { m ->
             val name = m.groupValues[1].trim()
             val body = m.groupValues[2].trim()
             if (!has(Manifest.permission.READ_CONTACTS)) {

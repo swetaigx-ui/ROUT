@@ -371,6 +371,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelPending() {
         _confirm.value = null
+        if (::router.isInitialized) router.clearDraft()
         viewModelScope.launch {
             db.conversations().insertMessage(Message(conversationId = conversationId.value, role = "rout", text = "Cancelled."))
             engine.setState(AssistantState.IDLE)
