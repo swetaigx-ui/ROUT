@@ -172,7 +172,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // Dispatch-level truth: the router's message is what the phone DID
                 // (e.g. startActivity succeeded) - not visual confirmation. The note
                 // says so, and the model is told not to upgrade it into a promise.
-                live.sendContextNote("[ROUT device action result] User asked: \"$utter\". Phone-side result (dispatched, not visually confirmed): ${reply.take(200)}. Tell the user this outcome briefly and naturally. If it failed, say so. Never upgrade this into a bigger claim.")
+                live.sendContextNote("[ROUT device action result] User asked: \"$utter\". Phone-side result (dispatched, not visually confirmed): ${router.liveSafeResult(reply)}. Tell the user this outcome briefly and naturally. If it failed, say so. Never upgrade this into a bigger claim.")
             }
         }
     }

@@ -249,6 +249,39 @@ class SendCallBoundary079Test {
         assertTrue(r, r.contains("jab tak upar result na likha ho"))
     }
 
+    @Test fun privateScreenOrNotificationReplyNeverReturnsAsAiHistoryOrRecap() = runBlocking {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(ctx, RoutDatabase::class.java).allowMainThreadQueries().build()
+        val secret = "Tumhari latest notifications: Bank: OTP 123456"
+        val hist = listOf(com.rout.aiassistant.ai.ChatTurn("user", "meri notifications padho"),
+            com.rout.aiassistant.ai.ChatTurn("rout", secret),
+            com.rout.aiassistant.ai.ChatTurn("rout", "Routine: x. " + secret + " Done."))
+        val rt = CommandRouter(ctx, db, Prefs(ctx), { ProviderManager("", "", false, null) }, { hist }, { armed.add(it) })
+        rt.markPrivateForTest(secret)
+        val safe = rt.safeHistory()
+        assertTrue(safe.none { it.text.contains("OTP") })
+        assertEquals(3, safe.size)
+        val recap = rt.handle("recap", localOnly = true)
+        assertFalse(recap, recap.contains("OTP"))
+    }
+
+    @Test fun legacyNotificationReplyIsShieldedAfterRestartAndFromLiveContext() = runBlocking {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(ctx, RoutDatabase::class.java).allowMainThreadQueries().build()
+        val secret = "Tumhari latest notifications: Bank: OTP 998877."
+        val hist = listOf(com.rout.aiassistant.ai.ChatTurn("user", "messages padho"), com.rout.aiassistant.ai.ChatTurn("rout", secret),
+            com.rout.aiassistant.ai.ChatTurn("user", "thanks"), com.rout.aiassistant.ai.ChatTurn("rout", "Welcome"))
+        // fresh router: nothing marked in memory (as after a restart)
+        val rt = CommandRouter(ctx, db, Prefs(ctx), { ProviderManager("", "", false, null) }, { hist }, { armed.add(it) })
+        val safe = rt.safeHistory()
+        assertTrue(safe.none { it.text.contains("OTP") })
+        assertEquals("Welcome", safe[3].text)
+        assertFalse(rt.liveSafeResult(secret).contains("OTP"))
+        assertEquals("ok", rt.liveSafeResult("ok"))
+        val recap = rt.handle("recap", localOnly = true)
+        assertFalse(recap, recap.contains("OTP"))
+    }
+
     @Test fun validatedChainHaltsAtSendConfirmation() = runBlocking {
         val rt = router()
         val c = com.rout.aiassistant.commands.ActionChain.parse(

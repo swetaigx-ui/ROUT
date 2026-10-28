@@ -161,6 +161,22 @@ class CommandRouter(
     /** Counts armed confirmations so a routine can halt at the first one (single pending slot, never auto-approved). */
     private var confirmRequests = 0
     private var contactError = ""
+    /** Replies built from on-device private sources (screen text, notifications). Never sent back to the cloud as chat history. */
+    private val privateReplies = HashSet<String>()
+    private val PRIVATE_PLACEHOLDER = "(private on-device result, not shared)"
+    private fun priv(s: String): String { if (s.isNotBlank()) privateReplies.add(s); return s }
+    private suspend fun scExec(intent: ScreenControl.Intent, ask: suspend (String, String) -> String, cloudAllowed: Boolean): String =
+        priv(ScreenControl.execute(intent, ask, cloudAllowed))
+    /** Chat history for the AI provider and recap, minus replies that came from the screen or notifications. */
+    internal fun markPrivateForTest(s: String) { priv(s) }
+    internal fun safeHistory(): List<ChatTurn> = history().map {
+        if (it.role != "user" && isPrivateReply(it.text)) ChatTurn(it.role, PRIVATE_PLACEHOLDER) else it
+    }
+    /** True for replies built from screen/notification text. Fails closed on the legacy notification prefix even after a restart. */
+    internal fun isPrivateReply(text: String): Boolean =
+        text.contains("Tumhari latest notifications:") || privateReplies.any { p -> text.contains(p) }
+    /** What may be sent to the live voice model about a device action result. */
+    fun liveSafeResult(reply: String): String = if (isPrivateReply(reply)) PRIVATE_PLACEHOLDER else reply.take(200)
     internal fun groundedRecap(h: List<ChatTurn>): String {
         val pairs = ArrayList<Pair<String, String>>()
         var i = 0
@@ -267,7 +283,7 @@ class CommandRouter(
 
         // --- Grounded recap: only what is actually in this conversation. No mood, no remembered-from-before claims. ---
         if (Regex("^(?:pichhli baat|pichli baat|abhi tak kya (?:hua|kiya)|recap|ab tak kya hua|humne kya kiya|hamne kya kiya|kya kya hua)(?:\\s+(?:batao|bolo|sunao))?\\??$").matches(t)) {
-            return true to groundedRecap(history())
+            return true to groundedRecap(safeHistory())
         }
 
         // --- Diagnostic: package visibility check ---
@@ -279,7 +295,7 @@ class CommandRouter(
         ScreenControl.parse(t)?.let { early ->
             if (early is ScreenControl.Intent.Notifications || early is ScreenControl.Intent.QuickSettings ||
                 early is ScreenControl.Intent.LockScreen || early is ScreenControl.Intent.SystemScreenshot) {
-                return true to ScreenControl.execute(early, ::askAiAboutScreen, false)
+                return true to scExec(early, ::askAiAboutScreen, false)
             }
         }
 
@@ -374,7 +390,7 @@ class CommandRouter(
             }
             val items = svc.recentSummaries(5)
             return if (items.isEmpty()) true to "Abhi koi notification nahi hai."
-            else true to "Tumhari latest notifications: " + items.joinToString(". ") + "."
+            else true to priv("Tumhari latest notifications: " + items.joinToString(". ") + ".")
         }
 
         // --- Daily spoken briefing ---
@@ -974,7 +990,7 @@ class CommandRouter(
             val blindGesture = intent is ScreenControl.Intent.TapXY || intent is ScreenControl.Intent.DragXY
             if (blindGesture) {
                 val svc = com.rout.aiassistant.service.RoutAccessibilityService.instance
-                    ?: return true to ScreenControl.execute(intent, ::askAiAboutScreen, false)
+                    ?: return true to scExec(intent, ::askAiAboutScreen, false)
                 val (px, py) = when (intent) {
                     is ScreenControl.Intent.TapXY -> intent.x to intent.y
                     is ScreenControl.Intent.DragXY -> intent.x1 to intent.y1
@@ -982,23 +998,23 @@ class CommandRouter(
                 }
                 // Resolve BEFORE asking: unreadable, sensitive or unresolved/consequential targets are refused outright.
                 if (!svc.readableAndSafe() || !svc.pointIsResolvedAndHarmless(px, py)) {
-                    return true to ScreenControl.execute(intent, ::askAiAboutScreen, false)
+                    return true to scExec(intent, ::askAiAboutScreen, false)
                 }
                 val what = svc.describePoint(px, py) ?: "ye jagah"
                 requestConfirmation(ConfirmRequest("screen-gesture",
                     "'$what' par gesture chalaun? (screen par abhi jo dikh raha hai uske hisaab se)") {
-                    ScreenControl.execute(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
+                    scExec(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
                 })
                 return true to "Confirm on screen - coordinate gesture se pehle aapki permission chahiye."
             }
             if (sendTarget != null && ScreenControl.isSendLike(sendTarget)) {
                 requestConfirmation(ConfirmRequest("screen-tap",
                     "'$sendTarget' tap karne se kuch bheja ya post ho sakta hai. Karoon?") {
-                    ScreenControl.execute(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
+                    scExec(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
                 })
                 return true to "Confirm on screen - tap karne se pehle aapki permission chahiye."
             }
-            return true to ScreenControl.execute(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
+            return true to scExec(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
         }
 
         // --- AI fallback ---
@@ -1160,7 +1176,7 @@ class CommandRouter(
                     "Translate the following into $target. Reply with ONLY the translation, no explanation.\n\n$raw"
                 }
                 val chainHint = if (translateOn) "" else ActionChain.HINT
-                when (val r = pm.provider()!!.chat(history(), effectiveRaw + chainHint, visionImages())) {
+                when (val r = pm.provider()!!.chat(safeHistory(), effectiveRaw + chainHint, visionImages())) {
                     is AiResult.Reply -> {
                         val (visible, chain) = if (translateOn) r.text to null else ActionChain.extract(r.text)
                         if (chain == null) true to r.text
