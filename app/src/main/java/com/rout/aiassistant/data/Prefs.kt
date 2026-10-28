@@ -38,10 +38,19 @@ class Prefs(private val context: Context) {
         val BRIEFING_HOUR = intPreferencesKey("briefing_hour")
         val BRIEFING_MINUTE = intPreferencesKey("briefing_minute")
         /** Cloud transfer of screen content. New key on purpose: no older toggle can enable it. Default OFF. */
+        val NOTIF_REPLY_CONSENT_V1 = booleanPreferencesKey("notif_reply_consent_v1")
+        val SCREEN_IMAGE_CONSENT_V1 = booleanPreferencesKey("screen_image_consent_v1")
         val SCREEN_CLOUD_CONSENT_V2 = booleanPreferencesKey("screen_cloud_consent_v2")
     }
 
+    suspend fun notifReplyAllowed(): Boolean = context.ds.data.first()[NOTIF_REPLY_CONSENT_V1] == true
+    val notifReplyFlow: Flow<Boolean> = context.ds.data.map { it[NOTIF_REPLY_CONSENT_V1] == true }
+    suspend fun setNotifReplyAllowed(v: Boolean) = context.ds.edit { it[NOTIF_REPLY_CONSENT_V1] = v }
+    suspend fun screenImageAllowed(): Boolean = context.ds.data.first()[SCREEN_IMAGE_CONSENT_V1] == true
+    val screenImageFlow: Flow<Boolean> = context.ds.data.map { it[SCREEN_IMAGE_CONSENT_V1] == true }
+    suspend fun setScreenImageAllowed(v: Boolean) = context.ds.edit { it[SCREEN_IMAGE_CONSENT_V1] = v }
     suspend fun screenCloudAllowed(): Boolean = context.ds.data.first()[SCREEN_CLOUD_CONSENT_V2] == true
+    val screenCloudFlow: Flow<Boolean> = context.ds.data.map { it[SCREEN_CLOUD_CONSENT_V2] == true }
     suspend fun setScreenCloudAllowed(v: Boolean) = context.ds.edit { it[SCREEN_CLOUD_CONSENT_V2] = v }
 
     val language: Flow<String> = context.ds.data.map { it[LANGUAGE] ?: "hi-IN" }

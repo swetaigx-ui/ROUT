@@ -75,4 +75,15 @@ class ChainB2Test0724 {
             assertFalse(line + " -> " + r, r.contains("ROUT AI") || r.contains("To enable AI"))
         }
     }
+
+    /** Replies captured from the live Worker (gemini-3.6-flash) on Oct 28 21:54 with the real HINT: provider output shapes, not unit-made JSON. */
+    @Test fun realLiveWorkerRepliesParseToTheExpectedChains() {
+        val timer = "Haan Boss, 10 minute ka timer aur torch dono set kar raha hoon.\n\n```json\n{\n  \"speech\": \"Haan Boss, 10 minute ka timer aur torch dono set kar raha hoon.\",\n  \"actions\": [\n    {\n      \"type\": \"SET_TIMER\",\n      \"minutes\": 10\n    },\n    {\n      \"type\": \"FLASHLIGHT\",\n      \"state\": \"on\"\n    }\n  ]\n}\n```"
+        val alarm = "{\"speech\":\"Kal subah 7 baje ka alarm laga diya hai, Boss! Sote rahiye befikr.\",\"actions\":[{\"type\":\"SET_ALARM\",\"hour\":7,\"minute\":0}]}"
+        val t = ActionChain.extract(timer).second!!
+        assertEquals(listOf("timer 10 minutes", "torch on").size, t.steps.size)
+        assertTrue(t.steps.toString(), t.steps[0].contains("timer") && t.steps[1] == "torch on")
+        val a = ActionChain.extract(alarm).second!!
+        assertEquals(listOf("alarm 7:00"), a.steps)
+    }
 }

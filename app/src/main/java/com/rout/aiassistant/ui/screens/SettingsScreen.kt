@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -350,6 +351,54 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
 
                 // --- Permissions and privacy (live grant status) ---
                 SettingsCard("Permissions and privacy", onY = { sectionOffsets["Permissions and privacy"] = it }) {
+                    val screenCloud by vm.screenCloud.collectAsState()
+                    var screenCloudAsk by remember { mutableStateOf(false) }
+                    RefSwitchRow(
+                        "Screen text AI ko bhejna",
+                        if (screenCloud) "ON: jab tum 'screen ke baare mein poochho' jaisa bolte ho, har sawal par pehle exact text dikhta hai, Confirm karne par hi wo ROUT ke AI ko jaata hai (sirf pattern se numbers/codes chhupte hain). Band karne ke liye switch OFF karo."
+                        else "OFF (default). 'Screen padho' sirf is phone par padhta hai aur kahin nahi bhejta.",
+                        screenCloud
+                    ) { on -> if (on) screenCloudAsk = true else scope.launch { vm.prefs.setScreenCloudAllowed(false) } }
+                    if (screenCloudAsk) {
+                        com.rout.aiassistant.ui.components.RoutApprovalDialog(
+                            title = "Screen text AI ko bhejne ki ijazat?",
+                            confirmLabel = "Haan, sirf is ke liye allow", dismissLabel = "Nahi",
+                            onConfirm = { screenCloudAsk = false; scope.launch { vm.prefs.setScreenCloudAllowed(true) } },
+                            onDismiss = { screenCloudAsk = false }
+                        ) { ScreenCloudScopeText() }
+                    }
+                    val screenImage by vm.screenImage.collectAsState()
+                    var screenImageAsk by remember { mutableStateOf(false) }
+                    RefSwitchRow(
+                        "Screenshot AI ko bhejna",
+                        if (screenImage) "ON: 'screen dekh kar batao: ...' bolne par screenshot lekar, pehle wahi image dikhakar, Confirm ke baad AI ko jaata hai. Text wale switch se alag. Band karne ke liye OFF karo."
+                        else "OFF (default). ROUT screen ki image kabhi AI ko nahi bhejta.",
+                        screenImage
+                    ) { on -> if (on) screenImageAsk = true else scope.launch { vm.prefs.setScreenImageAllowed(false) } }
+                    if (screenImageAsk) {
+                        com.rout.aiassistant.ui.components.RoutApprovalDialog(
+                            title = "Screenshot AI ko bhejne ki ijazat?",
+                            confirmLabel = "Haan, sirf is ke liye allow", dismissLabel = "Nahi",
+                            onConfirm = { screenImageAsk = false; scope.launch { vm.prefs.setScreenImageAllowed(true) } },
+                            onDismiss = { screenImageAsk = false }
+                        ) { Text(SCREEN_IMAGE_SCOPE_TEXT, fontSize = 14.sp, lineHeight = 20.sp) }
+                    }
+                    val notifReply by vm.notifReply.collectAsState()
+                    var notifReplyAsk by remember { mutableStateOf(false) }
+                    RefSwitchRow(
+                        "Notification se reply karna",
+                        if (notifReply) "ON: 'notification reply to Rohan: ...' bolne par, sirf us ek 1:1 notification mein, app + naam + tumhare words dikha kar Confirm ke baad reply jaata hai. Band karne ke liye OFF karo."
+                        else "OFF (default). ROUT kisi ki notification mein reply nahi bhejta.",
+                        notifReply
+                    ) { on -> if (on) notifReplyAsk = true else scope.launch { vm.prefs.setNotifReplyAllowed(false) } }
+                    if (notifReplyAsk) {
+                        com.rout.aiassistant.ui.components.RoutApprovalDialog(
+                            title = "Notification mein reply ki ijazat?",
+                            confirmLabel = "Haan, sirf is ke liye allow", dismissLabel = "Nahi",
+                            onConfirm = { notifReplyAsk = false; scope.launch { vm.prefs.setNotifReplyAllowed(true) } },
+                            onDismiss = { notifReplyAsk = false }
+                        ) { Text(NOTIF_REPLY_SCOPE_TEXT, fontSize = 14.sp, lineHeight = 20.sp) }
+                    }
                     fun granted(perm: String) = ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
                     RefPermRow("Mic", granted(android.Manifest.permission.RECORD_AUDIO)) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     RefPermRow("Contacts", granted(android.Manifest.permission.READ_CONTACTS)) { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:com.rout.aiassistant")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -358,7 +407,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     RefPermRow("Notification access (media control)", MediaControl.notificationAccessEnabled(context)) { MediaControl.openAccessSettings(context) }
                     RefPermRow("Accessibility (screen control)", RoutAccessibilityService.isEnabled) { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     Text(
-                        "Screen text is read only on this device; password, OTP and payment screens are refused; ROUT asks before anything that could send or post.",
+                        "Screen text is read on this device. It goes to the AI only if you switch on 'Screen text AI ko bhejna' AND confirm the exact text each time. Password, OTP and payment screens are refused; ROUT asks before anything that could send or post.",
                         color = RefDim, fontSize = 12.sp, lineHeight = 17.sp
                     )
                     RefAccentButton("Export my data (memory)") {
@@ -533,7 +582,7 @@ fun RefSwitchRow(title: String, subtitle: String, checked: Boolean, onCheckedCha
             Text(title, color = RefInk, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
             Text(subtitle, color = RefDim, fontSize = 12.sp, lineHeight = 17.sp)
         }
-        RefSwitch(checked, onCheckedChange)
+        Box(Modifier.testTag("sw:$title")) { RefSwitch(checked, onCheckedChange) }
     }
 }
 
@@ -605,3 +654,26 @@ fun RefGhostButton(text: String, onClick: () -> Unit) {
         contentAlignment = Alignment.Center
     ) { Text(text, color = RefInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
 }
+
+
+const val SCREEN_CLOUD_SCOPE_TEXT =
+    "Kya jaayega: sirf jab tum screen ke baare mein poochho - khuli screen ka text aur tumhara sawal.\n\n" +
+    "Kahan jaayega: ROUT ka AI backend, phir AI model (Gemini).\n\n" +
+    "Kya nahi jaayega: screenshot ya image (uska alag switch hai, default OFF). Lambe numbers, 4-8 digit codes, email aur phone pattern se chhupte hain - password ya recovery words nahi pakde jaate, aur normal text (chat ke message, naam) AI ko jaata hai. Password/OTP/payment screen keyword se pehchaani jaati hai, 100% pakka nahi.\n\n" +
+    "Har sawal par pehle exact text dikhaunga - Confirm ke baad hi kuch jaata hai. Ye sirf screen ke sawal ke liye hai, messages bhejne ya notifications ke liye nahi. Settings se kabhi band kar sakte ho."
+
+const val SCREEN_IMAGE_SCOPE_TEXT =
+    "Kya jaayega: jab tum 'screen dekh kar batao' bologe, us waqt ki poori screen ki image aur tumhara sawal. Har baar pehle wahi image dikhaunga - Confirm ke baad hi jaati hai.\n\n" +
+    "Kahan jaayega: ROUT ka AI backend, phir AI model (Gemini).\n\n" +
+    "Dhyan rakho: image mein jo bhi dikhta hai (chat, naam, numbers, password) sab jaata hai - image mein kuch chhupaya nahi ja sakta. Password/OTP/payment jaisi screen par ROUT refuse karta hai, par wo keyword se pehchaan hai, 100% pakka nahi. Secure screens (jaise kuch banking apps) Android khud block karta hai.\n\n" +
+    "Ye text wale switch se alag hai - text ki ijazat se image kabhi nahi jaati.\n\n" +
+    "Android Accessibility: is version mein screenshot ki capability judi hai. Pehli baar use se pehle Android Settings > Accessibility mein ROUT ko ek baar off karke on karna pad sakta hai - ROUT ye khud on nahi karega.\n\n" +
+    "Kabhi bhi yahan se band kar sakte ho."
+
+const val NOTIF_REPLY_SCOPE_TEXT =
+    "Kya hoga: tum bologe 'notification reply to Rohan: words'. ROUT us waqt ki reply-wali notifications dekhta hai, sirf ek 1:1 chat dhoondta hai jiska naam match kare, aur app + naam + tumhare words screen par dikhata hai. Tumhare Confirm ke baad hi wo reply jaata hai.\n\n" +
+    "Kya nahi hoga: group chat mein reply nahi. Do chats ka naam same ho to guess nahi - kuch nahi bhejta. Notification ka text kahin upload nahi hota. OTP ya payment ke liye nahi.\n\n" +
+    "Ye Android ki notification access ki permission se alag hai - wo tumhe Android Settings mein khud deni hogi. Bhejne se pehle har baar Confirm. Kabhi bhi yahan se band kar sakte ho."
+
+@Composable
+fun ScreenCloudScopeText() { Text(SCREEN_CLOUD_SCOPE_TEXT, fontSize = 14.sp, lineHeight = 20.sp) }

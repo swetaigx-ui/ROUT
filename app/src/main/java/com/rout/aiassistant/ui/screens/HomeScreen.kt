@@ -28,6 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -49,6 +51,7 @@ import com.rout.aiassistant.ui.components.RoutDock
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.rout.aiassistant.ui.components.Warby
 import com.rout.aiassistant.ui.components.WarbyMode
 import com.rout.aiassistant.ui.components.RoutBackground
@@ -276,14 +279,18 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
 
         // Confirmation dialog for consequential actions (call / sms)
         confirm?.let { req ->
-            AlertDialog(
-                onDismissRequest = { vm.cancelPending() },
-                confirmButton = { TextButton(onClick = { vm.confirmPending() }) { Text("Confirm", color = RoutCyan) } },
-                dismissButton = { TextButton(onClick = { vm.cancelPending() }) { Text("Cancel", color = RoutError) } },
-                title = { Text("Confirm action", color = RoutText) },
-                text = { Text(req.description, color = RoutDim) },
-                containerColor = RoutGraphite
-            )
+            com.rout.aiassistant.ui.components.RoutApprovalDialog(
+                title = "Confirm action", confirmLabel = "Confirm", dismissLabel = "Cancel",
+                onConfirm = { vm.confirmPending() }, onDismiss = { vm.cancelPending() }, container = RoutGraphite
+            ) {
+                Column {
+                    req.imageJpeg?.let { bytes ->
+                        val bmp = remember(bytes) { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+                        if (bmp != null) Image(bmp, contentDescription = "Screenshot jo AI ko jaayega", modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(bottom = 10.dp))
+                    }
+                    Text(req.description, color = RoutDim)
+                }
+            }
         }
     }
 }

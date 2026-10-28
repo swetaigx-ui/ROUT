@@ -177,6 +177,9 @@ class LiveSession(private val appContext: Context) {
      * RESULT goes back into the live session as a text note, so the model reports
      * what actually happened instead of claiming success on its own.
      */
+    /** Test seam: pretend the socket is up with this (fake) WebSocket. */
+    internal fun attachForTest(socket: WebSocket) { ws = socket; _state.value = "live" }
+
     fun sendContextNote(note: String) {
         if (_state.value != "live") return
         try {

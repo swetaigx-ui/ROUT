@@ -63,11 +63,10 @@ class LiveIntegration077Test {
         org.robolectric.shadows.ShadowLooper.idleMainLooper()
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun armConfirm(vm: MainViewModel, ran: BooleanArray) {
-        val f = vm.javaClass.getDeclaredField("_confirm").apply { isAccessible = true }
-        (f.get(vm) as MutableStateFlow<Any?>).value =
-            ConfirmRequest(id = "test", description = "Call karein?", action = { ran[0] = true; "Call laga di" })
+    private fun armConfirm(vm: MainViewModel, ran: BooleanArray, id: String = "test", image: ByteArray? = null) {
+        val f = vm.javaClass.getDeclaredField("confirmSlot").apply { isAccessible = true }
+        (f.get(vm) as com.rout.aiassistant.commands.ConfirmSlot).arm(
+            ConfirmRequest(id = id, description = "Call karein?", imageJpeg = image, action = { ran[0] = true; "Call laga di" }))
     }
 
     @Test fun liveTurnDispatchesAndRecords() = runBlocking {
@@ -139,5 +138,25 @@ class LiveIntegration077Test {
         assertEquals("off", live.state.value)
         assertEquals("", live.heard.value)
         assertEquals("", live.transcript.value)
+    }
+
+    @Test fun spokenYesNeverApprovesAnImagePreview() = runBlocking {
+        val vm = newVm(); val ran = booleanArrayOf(false)
+        armConfirm(vm, ran, id = "screen-image", image = byteArrayOf(1, 2))
+        vm.onLiveUserTurn("haan"); drain { rows().any { it.second.contains("Confirm button") } }
+        assertFalse("image approved by voice", ran[0])
+        assertTrue("preview must stay pending for the button", vm.confirm.value != null)
+        assertTrue(rows().any { it.first == "rout" && it.second.contains("Confirm button") })
+        vm.confirmPending()                       // the on-screen button path
+        drain { ran[0] }
+        assertTrue("button confirm should run it", ran[0])
+        assertEquals(null, vm.confirm.value)
+    }
+
+    @Test fun spokenYesNeverApprovesScreenTextPreview() = runBlocking {
+        val vm = newVm(); val ran = booleanArrayOf(false)
+        armConfirm(vm, ran, id = "screen-cloud")
+        vm.onLiveUserTurn("ok"); drain { rows().any { it.second.contains("Confirm button") } }
+        assertFalse(ran[0]); assertTrue(vm.confirm.value != null)
     }
 }

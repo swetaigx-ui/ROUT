@@ -88,7 +88,9 @@ object ScreenControl {
     suspend fun execute(
         intent: Intent,
         askAi: suspend (String, String) -> String,
-        cloudAllowed: Boolean = false
+        cloudAllowed: Boolean = false,
+        /** Per-request approval: gets (question, exactly the sanitized text that would be sent). Null = refuse (fail closed). */
+        previewForApproval: ((String, String) -> Unit)? = null
     ): String {
         val svc = RoutAccessibilityService.instance
             ?: return "Screen control off hai. ROUT Settings > Screen control pe jakar accessibility service on karo."
@@ -135,13 +137,31 @@ object ScreenControl {
             is Intent.AskAiAboutScreen -> {
                 if (!cloudAllowed) return CLOUD_OFF
                 val raw = svc.screenTextOnDevice() ?: return blockedOrEmpty(svc)
-                val redacted = ScreenSafety.redact(raw).take(3000)
-                val answer = askAi(intent.question, redacted)
-                "Screen ka text AI ko bheja gaya (numbers/codes/contact details chhupa kar). Jo text bheja gaya:\n---\n" +
-                    redacted.take(800) + "\n---\nJawab: " + answer
+                val redacted = ScreenSafety.redact(raw).take(CLOUD_TEXT_CAP)
+                // Even with the saved permission, nothing leaves until the user approves THIS exact text.
+                val preview = previewForApproval ?: return NO_PREVIEW
+                preview(intent.question, redacted)
+                "Confirm on screen - AI ko bhejne se pehle wo exact text dikhaunga jo jaayega."
             }
         }
     }
+
+    /** "screen dekh kar batao: ..." / "look at my screen ..." -> the question. Separate from the text path and its own approval. */
+    fun parseImageQuestion(raw: String): String? {
+        val t = raw.trim().lowercase().trimEnd('.', '?', '!')
+        val m = Regex("^(?:meri |meri wali )?(?:screen|screenshot) (?:ko )?dekh(?: ?kar| ?ke)? (?:batao|bata do|samjhao)[:,\\s]*(.*)$").find(t)
+            ?: Regex("^look at (?:my|the) screen(?: and (?:tell me|explain)(?: what| about)?)?[:,\\s]*(.*)$").find(t) ?: return null
+        return m.groupValues[1].trim().ifBlank { "Describe what is on this screen" }
+    }
+    const val IMAGE_OFF = "Screen ki image AI ko bhejna abhi band hai (uski alag permission baaki hai, text wali permission isme kaam nahi aati), isliye maine screenshot liya hi nahi."
+    const val IMAGE_NO_CAPTURE = "Screenshot nahi mila - screen sensitive lag rahi hai, readable nahi hai, Android ne roka (secure screen), ya is phone par Accessibility ko screenshot permission ke saath dobara on karna hoga. Kuch nahi bheja."
+    const val CLOUD_TEXT_CAP = 1200
+    const val NO_PREVIEW = "Screen ka text AI ko bhejne se pehle har baar exact text dikhana zaroori hai, wo abhi nahi ho paya - isliye kuch nahi bheja."
+
+    /** Reply after the user approved sending this exact text. Starts with the private-reply marker. */
+    fun cloudAnswer(sent: String, answer: String) =
+        "Screen ka text AI ko bheja gaya (tumhari approval ke baad, common patterns chhupa kar). Jo text bheja gaya:\n---\n" +
+            sent + "\n---\nJawab: " + answer
 
     const val CLOUD_OFF =
         "Screen ka text AI ko bhejna abhi band hai - uski permission abhi baaki hai, isliye maine screen padhi hi nahi. 'Screen padho' bologe to main sirf is phone par padhunga, kahin bhejunga nahi."

@@ -181,4 +181,19 @@ class B1FollowUp0724Test {
         assertEquals(1, armed.size); assertTrue(r2, r2.contains("nahi mila"))
         assertEquals(1, sent.size)
     }
+
+    @Test fun repeatShowsTheCurrentNumberNotTheOldOne() = runBlocking {
+        val rt = router()
+        rt.handle("rahul ko whatsapp bhejo hello", localOnly = true)
+        assertTrue(armed[0].description, armed[0].description.contains("+911111111111"))
+        armed[0].action()
+        assertEquals("+911111111111", sent[0].first)
+        rows = listOf(ContactResolver.Row("Rahul Sharma", "+918888888888", 1L), rows[1])   // same name, number changed
+        val r = rt.handle("phir se", localOnly = true)
+        assertEquals(2, armed.size); assertEquals("nothing sent before yes", 1, sent.size)
+        assertTrue(armed[1].description, armed[1].description.contains("+918888888888") && !armed[1].description.contains("+911111111111"))
+        assertTrue(r, r.contains("+918888888888"))
+        armed[1].action()
+        assertEquals("+918888888888", sent[1].first)
+    }
 }

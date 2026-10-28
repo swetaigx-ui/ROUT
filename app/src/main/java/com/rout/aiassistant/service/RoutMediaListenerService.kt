@@ -32,4 +32,36 @@ class RoutMediaListenerService : NotificationListenerService() {
             } catch (_: Exception) { null }
         } ?: emptyList()
     }
+
+    /** Reply-capable notification threads. Called only when the in-app reply approval is ON. Nothing is stored or uploaded. */
+    fun replyTargets(): List<com.rout.aiassistant.commands.ReplyTarget> {
+        val pm = packageManager
+        return activeNotifications?.mapNotNull { sbn ->
+            try {
+                val n = sbn.notification
+                val has = n.actions?.any { a -> a.remoteInputs?.isNotEmpty() == true } == true
+                if (!has) return@mapNotNull null
+                val e = n.extras
+                val sender = e.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString()?.take(60) ?: return@mapNotNull null
+                val group = e.getBoolean(android.app.Notification.EXTRA_IS_GROUP_CONVERSATION, false) ||
+                    e.getCharSequence(android.app.Notification.EXTRA_CONVERSATION_TITLE) != null
+                val app = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(sbn.packageName, 0)).toString() }.getOrDefault(sbn.packageName)
+                com.rout.aiassistant.commands.ReplyTarget(sbn.key, sbn.packageName, app, sender, group)
+            } catch (_: Exception) { null }
+        } ?: emptyList()
+    }
+
+    /** Sends [words] through the thread's own reply action. Returns false if the thread or action is gone. */
+    fun sendReply(key: String, words: String): Boolean {
+        val sbn = activeNotifications?.firstOrNull { it.key == key } ?: return false
+        val action = sbn.notification.actions?.firstOrNull { a -> a.remoteInputs?.isNotEmpty() == true } ?: return false
+        return try {
+            val intent = android.content.Intent()
+            val b = android.os.Bundle()
+            for (ri in action.remoteInputs) b.putCharSequence(ri.resultKey, words)
+            android.app.RemoteInput.addResultsToIntent(action.remoteInputs, intent, b)
+            action.actionIntent.send(this, 0, intent)
+            true
+        } catch (_: Exception) { false }
+    }
 }

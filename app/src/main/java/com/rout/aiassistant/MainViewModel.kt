@@ -84,11 +84,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onUserText(pending, fromVoice = true)
     }
     val batteryAlert = prefs.batteryAlert.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val notifReply = prefs.notifReplyFlow.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val screenImage = prefs.screenImageFlow.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val screenCloud = prefs.screenCloudFlow.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val flipSilent = prefs.flipSilent.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val bedtime = prefs.bedtime.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val _confirm = MutableStateFlow<ConfirmRequest?>(null)
-    val confirm: StateFlow<ConfirmRequest?> = _confirm
+    private val confirmSlot = com.rout.aiassistant.commands.ConfirmSlot()
+    private val _confirm get() = confirmSlot.state
+    val confirm: StateFlow<ConfirmRequest?> get() = confirmSlot.state
 
     val online: StateFlow<Boolean> = NetworkStatus.online
 
@@ -182,7 +186,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val yes = setOf("haan", "ha", "han", "haan ji", "han ji", "yes", "ok", "okay", "kar do", "haan kar do", "confirm", "theek hai", "haan bolo")
                 val no = setOf("nahi", "nahin", "na", "no", "cancel", "rehne do", "mat karo", "ruk", "ruko", "nahi karna")
                 when {
-                    t in yes -> { db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter)); confirmPending(); return@launch }
+                    t in yes -> { db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter)); confirmPending(viaVoice = true); return@launch }
                     t in no -> { db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter)); cancelPending(); return@launch }
                 }
             }
@@ -196,7 +200,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // Dispatch-level truth: the router's message is what the phone DID
                 // (e.g. startActivity succeeded) - not visual confirmation. The note
                 // says so, and the model is told not to upgrade it into a promise.
-                live.sendContextNote("[ROUT device action result] User asked: \"$utter\". Phone-side result (dispatched, not visually confirmed): ${router.liveSafeResult(reply)}. Tell the user this outcome briefly and naturally. If it failed, say so. Never upgrade this into a bigger claim.")
+                live.sendContextNote(router.liveNoteFor(utter, reply))
             }
         }
     }
@@ -253,8 +257,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             providerManager = { providerManager() },
             history = { messages.value.takeLast(12).map { ChatTurn(it.role, it.text) } },
             requestConfirmation = { req ->
-                _confirm.value = req
+                confirmSlot.arm(req)
                 engine.setState(AssistantState.WAITING_CONFIRMATION)
+                // Image / screen-text previews expire: the pending object (and the image bytes in it) is dropped, not just refused later.
+                if (confirmSlot.requiresButton(req)) viewModelScope.launch {
+                    kotlinx.coroutines.delay(com.rout.aiassistant.commands.ConfirmSlot.IMAGE_TTL_MS)
+                    if (confirmSlot.expireIfDue()) engine.setState(AssistantState.IDLE)
+                }
             },
             onPermissionNeeded = { cmd -> pendingAfterPermission = cmd },
             visionImages = { visionDoc?.images ?: emptyList() },
@@ -319,7 +328,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 when {
                     t in yes -> {
                         db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = text))
-                        confirmPending()
+                        confirmPending(viaVoice = true)
                         return@launch
                     }
                     t in no -> {
@@ -358,9 +367,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun confirmPending() {
-        val req = _confirm.value ?: return
-        _confirm.value = null
+    fun confirmPending(viaVoice: Boolean = false) {
+        val req = when (val t = confirmSlot.take(viaVoice)) {
+            is com.rout.aiassistant.commands.ConfirmSlot.Take.Run -> t.req
+            com.rout.aiassistant.commands.ConfirmSlot.Take.None -> return
+            com.rout.aiassistant.commands.ConfirmSlot.Take.NeedsButton -> {
+                // A spoken "haan" must never approve sending screen content: the exact text/image has to be seen and tapped.
+                val m = "Ye bhejne ke liye screen par dikh rahi image/text dekh kar Confirm button dabao - bolkar haan se nahi hoga."
+                viewModelScope.launch {
+                    db.conversations().insertMessage(Message(conversationId = conversationId.value, role = "rout", text = m))
+                    engine.speak(m)
+                }
+                return
+            }
+            com.rout.aiassistant.commands.ConfirmSlot.Take.Expired -> {
+                viewModelScope.launch {
+                    val m = "Wo preview purana ho gaya (90 second), isliye kuch nahi bheja. Dobara bolo."
+                    db.conversations().insertMessage(Message(conversationId = conversationId.value, role = "rout", text = m))
+                    engine.speak(m); engine.setState(AssistantState.IDLE)
+                }
+                return
+            }
+        }
         viewModelScope.launch {
             engine.setState(AssistantState.EXECUTING)
             val result = try { req.action() } catch (e: Exception) { "Action failed: ${e.javaClass.simpleName}" }

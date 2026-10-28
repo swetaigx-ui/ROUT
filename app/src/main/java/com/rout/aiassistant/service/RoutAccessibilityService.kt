@@ -27,6 +27,7 @@ class RoutAccessibilityService : AccessibilityService() {
     internal var sensitiveOverrideForTest: (() -> Boolean)? = null
     /** Test hook only: pretend there is no readable window. Null in production. */
     internal var readableForTest: Boolean? = null
+    internal var screenTextForTest: String? = null
     /** Test hook only: labels of nodes under a point. Null in production (real node tree is used). */
     internal var labelsAtForTest: ((Float, Float) -> List<String>?)? = null
 
@@ -138,6 +139,7 @@ class RoutAccessibilityService : AccessibilityService() {
     /** On-device screen text for command matching. Null on sensitive screens (fail closed). */
     fun screenTextOnDevice(): String? {
         if (isSensitiveScreen()) return null
+        screenTextForTest?.let { return it }
         val root = rootInActiveWindow ?: return null
         return try { collectText(root, StringBuilder(), 0).toString().trim().ifBlank { null } }
         finally { root.recycle() }
@@ -337,5 +339,47 @@ class RoutAccessibilityService : AccessibilityService() {
                 NoMatch -> "Screen pe wo cheez nahi mili."
                 ServiceOff -> "Screen control off hai. Settings mein ROUT accessibility on karo."
             }
+    }
+
+    internal var foregroundPkgForTest: (() -> String?)? = null
+    /** Package of the foreground window, or null when unreadable. Used to refuse sending an image of a screen that has since changed. */
+    fun foregroundPackage(): String? {
+        foregroundPkgForTest?.let { return it() }
+        val root = rootInActiveWindow ?: return null
+        return try { root.packageName?.toString() } finally { root.recycle() }
+    }
+
+    /** Test seam: replaces the real capture. */
+    internal var screenshotForTest: (() -> ByteArray?)? = null
+
+    /**
+     * One screenshot as a downscaled JPEG, or null. Null (fail closed) when there is no readable window, the screen looks
+     * sensitive, Android is older than 11, or Android refuses (e.g. FLAG_SECURE windows). Never stored, never sent from here.
+     */
+    suspend fun screenshotJpeg(): ByteArray? {
+        if (!readableAndSafe()) return null
+        screenshotForTest?.let { return it() }
+        if (android.os.Build.VERSION.SDK_INT < 30) return null
+        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            try {
+                takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                    override fun onSuccess(r: ScreenshotResult) {
+                        val out = try {
+                            val hw = android.graphics.Bitmap.wrapHardwareBuffer(r.hardwareBuffer, r.colorSpace)
+                            val sw = hw?.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                            hw?.recycle(); r.hardwareBuffer.close()
+                            if (sw == null) null else {
+                                val scale = minOf(1f, 1024f / maxOf(sw.width, sw.height))
+                                val b = if (scale < 1f) android.graphics.Bitmap.createScaledBitmap(sw, (sw.width * scale).toInt(), (sw.height * scale).toInt(), true) else sw
+                                val bos = java.io.ByteArrayOutputStream()
+                                b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, bos); bos.toByteArray()
+                            }
+                        } catch (_: Throwable) { null }
+                        if (cont.isActive) cont.resume(out) {}
+                    }
+                    override fun onFailure(errorCode: Int) { if (cont.isActive) cont.resume(null) {} }
+                })
+            } catch (_: Throwable) { if (cont.isActive) cont.resume(null) {} }
+        }
     }
 }
