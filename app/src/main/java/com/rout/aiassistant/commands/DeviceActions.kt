@@ -548,15 +548,11 @@ object DeviceActions {
         else ActionResult(false, "Google Maps is not available for navigation.")
     }
 
-    fun findContact(context: Context, name: String): Pair<String, String>? =
-        findContactWithId(context, name)?.let { it.first to it.second }
-
-    /** (display name, number, contact id) for the first fuzzy name match. */
-    fun findContactWithId(context: Context, name: String): Triple<String, String, Long>? {
-        val resolver = context.contentResolver
-        val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
-        val cursor = resolver.query(
-            uri,
+    /** All phone rows whose display name contains [name]. */
+    fun queryContacts(context: Context, name: String): List<ContactResolver.Row> {
+        val out = ArrayList<ContactResolver.Row>()
+        val cursor = context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
             arrayOf(
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
@@ -564,12 +560,24 @@ object DeviceActions {
             ),
             "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
             arrayOf("%$name%"), null
-        ) ?: return null
+        ) ?: return out
         cursor.use {
-            if (it.moveToFirst()) return Triple(it.getString(0), it.getString(1), it.getLong(2))
+            while (it.moveToNext() && out.size < 50) {
+                val n = it.getString(0) ?: continue
+                val num = it.getString(1) ?: continue
+                out.add(ContactResolver.Row(n, num, it.getLong(2)))
+            }
         }
-        return null
+        return out
     }
+
+    /** Only a unique, unambiguous match resolves; ambiguity returns null (never guesses). */
+    fun findContact(context: Context, name: String): Pair<String, String>? =
+        findContactWithId(context, name)?.let { it.first to it.second }
+
+    fun findContactWithId(context: Context, name: String): Triple<String, String, Long>? =
+        (ContactResolver.resolve(name, queryContacts(context, name)) as? ContactResolver.Result.Unique)
+            ?.let { Triple(it.name, it.number, it.id) }
 
     /**
      * Place a call. With CALL_PHONE granted this is a direct call (ACTION_CALL);

@@ -146,12 +146,30 @@ class CommandRouter(
     private val prefs: Prefs,
     private val providerManager: () -> ProviderManager,
     private val history: () -> List<ChatTurn>,
-    private val requestConfirmation: (ConfirmRequest) -> Unit,
+    requestConfirmation: (ConfirmRequest) -> Unit,
     private val onPermissionNeeded: (String) -> Unit = {},
     /** Photos / PDF pages the user explicitly shared - attached to the AI fallback only. */
     private val visionImages: () -> List<SharedImage> = { emptyList() },
-    private val onClearVision: () -> Unit = {}
+    private val onClearVision: () -> Unit = {},
+    /** Seams so tests can prove the send/call confirmation boundary without real contacts or sends. */
+    private val contactRows: (Context, String) -> List<ContactResolver.Row> = { c, n -> DeviceActions.queryContacts(c, n) },
+    private val whatsappSender: (Context, String, String) -> String = { c, num, body -> DeviceActions.whatsappMessage(c, num, body).message },
+    private val whatsappCaller: (Context, Long, String, Boolean) -> String = { c, id, num, v -> DeviceActions.whatsappCall(c, id, num, v).message }
 ) {
+    private val confirmSink: (ConfirmRequest) -> Unit = requestConfirmation
+    /** Counts armed confirmations so a routine can halt at the first one (single pending slot, never auto-approved). */
+    private var confirmRequests = 0
+    private var contactError = ""
+    /** Resolves one contact or sets contactError. Ambiguity or no match arms nothing. */
+    private fun resolveContact(name: String): Triple<String, String, Long>? {
+        return when (val r = ContactResolver.resolve(name, contactRows(context, name))) {
+            is ContactResolver.Result.Unique -> Triple(r.name, r.number, r.id)
+            is ContactResolver.Result.Ambiguous -> { contactError = ContactResolver.ambiguousMessage(name, r.options); null }
+            ContactResolver.Result.None -> { contactError = "\"$name\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."; null }
+        }
+    }
+    private fun requestConfirmation(req: ConfirmRequest) { confirmRequests++; confirmSink(req) }
+
     // Pre-action ack ("YouTube khol rahi hoon") spoken BEFORE the action result.
     @Volatile private var preAction: String? = null
     fun consumePreAction(): String? { val p = preAction; preAction = null; return p }
@@ -269,10 +287,9 @@ class CommandRouter(
             if (!has(Manifest.permission.READ_CONTACTS)) {
                 needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
-            val contact = DeviceActions.findContact(context, name)
-                ?: return false to "\"$name\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
+            val contact = resolveContact(name) ?: return false to contactError
             requestConfirmation(ConfirmRequest("whatsapp", "WhatsApp ${contact.first}: \"$body\"") {
-                DeviceActions.whatsappMessage(context, contact.second, body).message
+                whatsappSender(context, contact.second, body)
             })
             return true to "${contact.first} ko WhatsApp: \"$body\" - screen par confirm karo ya 'haan' bolo."
         }
@@ -284,11 +301,10 @@ class CommandRouter(
             if (!has(Manifest.permission.READ_CONTACTS)) {
                 needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
-            val contact = DeviceActions.findContactWithId(context, name)
-                ?: return false to "\"$name\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
+            val contact = resolveContact(name) ?: return false to contactError
             val kind = if (video) "video call" else "call"
             requestConfirmation(ConfirmRequest("wa-call", "WhatsApp $kind: ${contact.first} (${contact.second})?") {
-                DeviceActions.whatsappCall(context, contact.third, contact.second, video).message
+                whatsappCaller(context, contact.third, contact.second, video)
             })
             return true to "${contact.first} ko WhatsApp $kind karna hai - screen par confirm karo ya 'haan' bolo."
         }
@@ -433,8 +449,7 @@ class CommandRouter(
             if (!has(Manifest.permission.READ_CONTACTS)) {
                 needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
-            val contact = DeviceActions.findContact(context, nameRaw)
-                ?: return false to "\"$nameRaw\" naam ka contact nahi mila. Naam saaf bolo ya number bata do."
+            val contact = resolveContact(nameRaw) ?: return false to contactError
             val body = "Meri location: $link"
             requestConfirmation(ConfirmRequest("whatsapp", "Location WhatsApp ${contact.first}?") {
                 DeviceActions.whatsappMessage(context, contact.second, body).message
@@ -754,8 +769,7 @@ class CommandRouter(
             if (!has(Manifest.permission.READ_CONTACTS)) {
                 needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
             }
-            val contact = DeviceActions.findContact(context, name)
-                ?: return false to "\"$name\" naam ka contact nahi mila. Naam thoda aur saaf bolo, ya number bata do."
+            val contact = resolveContact(name) ?: return false to contactError
             requestConfirmation(ConfirmRequest("call", "Call ${contact.first} (${contact.second})?") {
                 DeviceActions.placeCall(context, contact.second)
             })
@@ -767,8 +781,7 @@ class CommandRouter(
             if (!has(Manifest.permission.READ_CONTACTS)) {
                 needPerm(); return false to "I need contacts permission to find $name. Grant it from the prompt - I will resume automatically."
             }
-            val contact = DeviceActions.findContact(context, name)
-                ?: return false to "I could not find a contact matching $name."
+            val contact = resolveContact(name) ?: return false to contactError
             requestConfirmation(ConfirmRequest("sms", "Send SMS to ${contact.first}: \"$body\"?") {
                 if (DeviceActions.smsIntent(context, contact.second, body)) "Opening your messaging app with the draft. Review and send."
                 else "Could not open the messaging app."
@@ -965,12 +978,25 @@ class CommandRouter(
         db.routines().insert(Routine(trigger = "good night", steps = "battery\ndnd on"))
     }
 
+    /** Runs a validated ActionChain: same halting-at-first-confirmation path as routines; never approves. */
+    suspend fun runValidatedChain(steps: List<String>): String =
+        runRoutine(Routine(trigger = "ai chain", steps = steps.joinToString("\n"))).second
+
     private suspend fun runRoutine(r: Routine): Pair<Boolean, String> {
         inRoutine = true
         try {
-            val results = r.steps.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-                .map { step -> singleStep(step).second }
-            return true to "Routine: ${r.trigger}. " + results.joinToString(" ")
+            val out = ArrayList<String>()
+            val steps = r.steps.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+            for ((i, step) in steps.withIndex()) {
+                val before = confirmRequests
+                out.add(singleStep(step).second)
+                if (confirmRequests > before) {
+                    // A step needs the user's yes/no. Nothing after it runs; the routine never approves for the user.
+                    if (i < steps.size - 1) out.add("Routine yahin ruki: is step ki haan/nahi ke baad baaki ${steps.size - 1 - i} step nahi chalenge.")
+                    break
+                }
+            }
+            return true to "Routine: ${r.trigger}. " + out.joinToString(" ")
         } finally {
             inRoutine = false
         }

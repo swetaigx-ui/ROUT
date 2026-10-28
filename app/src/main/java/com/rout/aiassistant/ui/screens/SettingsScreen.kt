@@ -167,7 +167,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
             ) {
                 // --- Naam ---
                 SettingsCard("Naam", onY = { sectionOffsets["Naam"] = it }) {
-                    RefField(nameInput, { nameInput = it.take(30); vm.setUserName(it.take(30)) }, "Aapka naam (Home greeting mein)")
+                    RefField(nameInput, { nameInput = it.take(30); vm.setUserName(it.take(30)) }, "Aapka naam (optional)")
                 }
 
                 // --- Connection (live status) ---
