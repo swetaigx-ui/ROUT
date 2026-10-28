@@ -209,7 +209,7 @@ class CommandRouter(
         ScreenControl.parse(t)?.let { early ->
             if (early is ScreenControl.Intent.Notifications || early is ScreenControl.Intent.QuickSettings ||
                 early is ScreenControl.Intent.LockScreen || early is ScreenControl.Intent.SystemScreenshot) {
-                return true to ScreenControl.execute(early, ::askAiAboutScreen)
+                return true to ScreenControl.execute(early, ::askAiAboutScreen, false)
             }
         }
 
@@ -901,20 +901,32 @@ class CommandRouter(
             }
             val blindGesture = intent is ScreenControl.Intent.TapXY || intent is ScreenControl.Intent.DragXY
             if (blindGesture) {
+                val svc = com.rout.aiassistant.service.RoutAccessibilityService.instance
+                    ?: return true to ScreenControl.execute(intent, ::askAiAboutScreen, false)
+                val (px, py) = when (intent) {
+                    is ScreenControl.Intent.TapXY -> intent.x to intent.y
+                    is ScreenControl.Intent.DragXY -> intent.x1 to intent.y1
+                    else -> 0f to 0f
+                }
+                // Resolve BEFORE asking: unreadable, sensitive or unresolved/consequential targets are refused outright.
+                if (!svc.readableAndSafe() || !svc.pointIsResolvedAndHarmless(px, py)) {
+                    return true to ScreenControl.execute(intent, ::askAiAboutScreen, false)
+                }
+                val what = svc.describePoint(px, py) ?: "ye jagah"
                 requestConfirmation(ConfirmRequest("screen-gesture",
-                    "Ye gesture current screen par bina label dekhe chalega aur kuch bhej/commit kar sakta hai. Karoon?") {
-                    ScreenControl.execute(intent, ::askAiAboutScreen)
+                    "'$what' par gesture chalaun? (screen par abhi jo dikh raha hai uske hisaab se)") {
+                    ScreenControl.execute(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
                 })
                 return true to "Confirm on screen - coordinate gesture se pehle aapki permission chahiye."
             }
             if (sendTarget != null && ScreenControl.isSendLike(sendTarget)) {
                 requestConfirmation(ConfirmRequest("screen-tap",
                     "'$sendTarget' tap karne se kuch bheja ya post ho sakta hai. Karoon?") {
-                    ScreenControl.execute(intent, ::askAiAboutScreen)
+                    ScreenControl.execute(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
                 })
                 return true to "Confirm on screen - tap karne se pehle aapki permission chahiye."
             }
-            return true to ScreenControl.execute(intent, ::askAiAboutScreen)
+            return true to ScreenControl.execute(intent, ::askAiAboutScreen, prefs.screenCloudAllowed())
         }
 
         // --- AI fallback ---

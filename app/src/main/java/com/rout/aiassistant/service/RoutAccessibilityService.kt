@@ -25,6 +25,35 @@ import android.view.accessibility.AccessibilityNodeInfo
 class RoutAccessibilityService : AccessibilityService() {
     /** Test hook only: forces the sensitive-screen verdict. Always null in production. */
     internal var sensitiveOverrideForTest: (() -> Boolean)? = null
+    /** Test hook only: pretend there is no readable window. Null in production. */
+    internal var readableForTest: Boolean? = null
+    /** Test hook only: labels of nodes under a point. Null in production (real node tree is used). */
+    internal var labelsAtForTest: ((Float, Float) -> List<String>?)? = null
+
+    /** True only when a window is readable AND it does not look sensitive. Gestures/typing need this (fail closed). */
+    fun readableAndSafe(): Boolean {
+        readableForTest?.let { if (!it) return false; return !isSensitiveScreen() }
+        val root = rootInActiveWindow ?: return false
+        root.recycle()
+        return !isSensitiveScreen()
+    }
+
+    /** Labels (text/description) of every node whose bounds contain the point; null when unreadable. */
+    fun labelsAt(x: Float, y: Float): List<String>? {
+        labelsAtForTest?.let { return it(x, y) }
+        val root = rootInActiveWindow ?: return null
+        val out = ArrayList<String>()
+        fun walk(n: AccessibilityNodeInfo, d: Int) {
+            if (d > 30) return
+            val r = android.graphics.Rect(); n.getBoundsInScreen(r)
+            if (r.contains(x.toInt(), y.toInt())) {
+                out.add(((n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: "") + " " + (n.viewIdResourceName ?: "")).trim())
+            }
+            for (i in 0 until n.childCount) { val c = n.getChild(i) ?: continue; try { walk(c, d + 1) } finally { c.recycle() } }
+        }
+        try { walk(root, 0) } finally { root.recycle() }
+        return out
+    }
 
     companion object {
         @Volatile var instance: RoutAccessibilityService? = null
@@ -184,7 +213,7 @@ class RoutAccessibilityService : AccessibilityService() {
     }
 
     fun longPressNamed(name: String): Boolean {
-        if (isSensitiveScreen()) return false
+        if (!readableAndSafe()) return false
         val root = rootInActiveWindow ?: return false
         try {
             val t = findByLabel(root, name.lowercase(), true) ?: return false
@@ -194,7 +223,7 @@ class RoutAccessibilityService : AccessibilityService() {
 
     /** Types into the currently focused editable field. Never on sensitive/password screens. */
     fun typeIntoFocused(text: String): Boolean {
-        if (isSensitiveScreen()) return false
+        if (!readableAndSafe()) return false
         val root = rootInActiveWindow ?: return false
         try {
             val f = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
@@ -210,6 +239,7 @@ class RoutAccessibilityService : AccessibilityService() {
 
     /** Polls the on-device screen text for [text] up to [timeoutMs]. Nothing leaves the device. */
     suspend fun waitForText(text: String, timeoutMs: Long): Boolean {
+        if (!readableAndSafe()) return false
         val end = System.currentTimeMillis() + timeoutMs.coerceIn(500, 10_000)
         while (System.currentTimeMillis() < end) {
             if (screenTextOnDevice()?.lowercase()?.contains(text.lowercase()) == true) return true
@@ -220,7 +250,7 @@ class RoutAccessibilityService : AccessibilityService() {
 
     /** Horizontal/vertical swipe by gesture for carousels and pagers. */
     fun swipe(dir: String): Boolean {
-        if (isSensitiveScreen()) return false
+        if (!readableAndSafe()) return false
         val m = resources.displayMetrics
         val w = m.widthPixels.toFloat(); val h = m.heightPixels.toFloat()
         val (sx, sy, ex, ey) = when (dir) {
@@ -246,7 +276,8 @@ class RoutAccessibilityService : AccessibilityService() {
         }
 
     fun tapXY(x: Float, y: Float, double: Boolean = false): Boolean {
-        if (isSensitiveScreen()) return false
+        if (!readableAndSafe()) return false
+        if (!pointIsResolvedAndHarmless(x, y)) return false
         val b = android.accessibilityservice.GestureDescription.Builder()
         b.addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(strokePath(listOf(x to y)), 0, 60))
         if (double) b.addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(strokePath(listOf(x to y)), 160, 60))
@@ -254,7 +285,8 @@ class RoutAccessibilityService : AccessibilityService() {
     }
 
     fun dragXY(x1: Float, y1: Float, x2: Float, y2: Float): Boolean {
-        if (isSensitiveScreen()) return false
+        if (!readableAndSafe()) return false
+        if (!pointIsResolvedAndHarmless(x1, y1) || !pointIsResolvedAndHarmless(x2, y2)) return false
         val g = android.accessibilityservice.GestureDescription.Builder().addStroke(
             android.accessibilityservice.GestureDescription.StrokeDescription(strokePath(listOf(x1 to y1, x2 to y2)), 0, 500)).build()
         return dispatchGesture(g, null, null)
@@ -262,7 +294,7 @@ class RoutAccessibilityService : AccessibilityService() {
 
     /** Two-finger pinch around the screen centre. zoomIn spreads fingers, otherwise pinches them together. */
     fun pinch(zoomIn: Boolean): Boolean {
-        if (isSensitiveScreen()) return false
+        if (!readableAndSafe()) return false
         if (android.os.Build.VERSION.SDK_INT < 24) return false
         val m = resources.displayMetrics
         val cx = m.widthPixels / 2f; val cy = m.heightPixels / 2f
@@ -274,6 +306,16 @@ class RoutAccessibilityService : AccessibilityService() {
             .build()
         return dispatchGesture(d, null, null)
     }
+
+    /** A coordinate may act only if the node tree resolves something there and no label under it is consequential. */
+    fun pointIsResolvedAndHarmless(x: Float, y: Float): Boolean {
+        val labels = labelsAt(x, y) ?: return false
+        if (labels.isEmpty()) return false
+        return labels.none { com.rout.aiassistant.commands.ScreenControl.isSendLike(it) }
+    }
+
+    fun describePoint(x: Float, y: Float): String? =
+        labelsAt(x, y)?.map { it.trim() }?.lastOrNull { it.isNotBlank() }?.take(40)
 
     fun displaySize(): Pair<Int, Int> = resources.displayMetrics.widthPixels to resources.displayMetrics.heightPixels
 

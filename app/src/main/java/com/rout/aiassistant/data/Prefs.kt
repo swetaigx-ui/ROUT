@@ -6,6 +6,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.ds by preferencesDataStore(name = "rout_settings")
@@ -35,7 +36,12 @@ class Prefs(private val context: Context) {
         val BRIEFING_COMMAND = stringPreferencesKey("briefing_command")
         val BRIEFING_HOUR = intPreferencesKey("briefing_hour")
         val BRIEFING_MINUTE = intPreferencesKey("briefing_minute")
+        /** Cloud transfer of screen content. New key on purpose: no older toggle can enable it. Default OFF. */
+        val SCREEN_CLOUD_CONSENT_V2 = booleanPreferencesKey("screen_cloud_consent_v2")
     }
+
+    suspend fun screenCloudAllowed(): Boolean = context.ds.data.first()[SCREEN_CLOUD_CONSENT_V2] == true
+    suspend fun setScreenCloudAllowed(v: Boolean) = context.ds.edit { it[SCREEN_CLOUD_CONSENT_V2] = v }
 
     val language: Flow<String> = context.ds.data.map { it[LANGUAGE] ?: "hi-IN" }
     val speechRate: Flow<Float> = context.ds.data.map { it[SPEECH_RATE] ?: 1.0f }

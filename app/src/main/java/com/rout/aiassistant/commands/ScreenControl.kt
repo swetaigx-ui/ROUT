@@ -40,7 +40,8 @@ object ScreenControl {
     }
 
     /** Targets whose tap could send/share/commit something to a third party. */
-    private val SEND_LIKE = listOf("send", "bhej", "submit", "pay", "transfer", "share", "post", "upload")
+    private val SEND_LIKE = listOf("send", "bhej", "submit", "pay", "transfer", "share", "post", "upload",
+        "delete", "remove", "hata", "buy", "purchase", "order", "confirm", "checkout", "book", "call", "dial", "uninstall", "erase", "reset", "clear", "sign out", "logout", "log out", "unlock", "install", "allow", "accept")
 
     fun parse(t: String): Intent? {
         Regex("^(double tap|tap) at (\\d{1,4}) (\\d{1,4})\$").find(t)?.let {
@@ -86,7 +87,8 @@ object ScreenControl {
      */
     suspend fun execute(
         intent: Intent,
-        askAi: suspend (String, String) -> String
+        askAi: suspend (String, String) -> String,
+        cloudAllowed: Boolean = false
     ): String {
         val svc = RoutAccessibilityService.instance
             ?: return "Screen control off hai. ROUT Settings > Screen control pe jakar accessibility service on karo."
@@ -98,18 +100,21 @@ object ScreenControl {
             is Intent.QuickSettings -> if (svc.quickSettings()) "Done - quick settings khul gayi." else "Quick settings nahi khul payi."
             is Intent.LockScreen -> if (svc.lockScreen()) "Done - screen lock." else "Is phone par lock action nahi chala (Android 9+ chahiye ya phone ne roka)."
             is Intent.SystemScreenshot -> if (svc.systemScreenshot()) "Screenshot ka command diya. Phone ne save kiya ya nahi, gallery mein check karna." else "Screenshot command nahi chala."
-            is Intent.LongPress -> if (svc.isSensitiveScreen()) BLOCKED
+            is Intent.LongPress -> if (!svc.readableAndSafe()) refusal(svc)
                 else if (svc.longPressNamed(intent.target)) "Done - '${intent.target}' long press kiya." else "'${intent.target}' long press ke liye nahi mila."
-            is Intent.TypeText -> if (svc.isSensitiveScreen()) BLOCKED
+            is Intent.TypeText -> if (!svc.readableAndSafe()) refusal(svc)
                 else if (svc.typeIntoFocused(intent.text)) "Done - type kar diya. Send nahi kiya." else "Koi normal text box focus mein nahi mila."
-            is Intent.WaitFor -> if (svc.isSensitiveScreen()) BLOCKED
+            is Intent.WaitFor -> if (!svc.readableAndSafe()) refusal(svc)
                 else if (svc.waitForText(intent.text, 8000)) "'${intent.text}' screen par aa gaya." else "8 second mein '${intent.text}' nahi dikha."
-            is Intent.Swipe -> if (svc.swipe(intent.dir)) "Done - swipe ${intent.dir}." else blockedOrFail(svc)
-            is Intent.TapXY -> if (svc.isSensitiveScreen()) BLOCKED
+            is Intent.Swipe -> if (!svc.readableAndSafe()) refusal(svc)
+                else if (svc.swipe(intent.dir)) "Done - swipe ${intent.dir}." else "Swipe nahi chala." 
+            is Intent.TapXY -> if (!svc.readableAndSafe()) refusal(svc)
+                else if (!svc.pointIsResolvedAndHarmless(intent.x, intent.y)) UNRESOLVED
                 else if (svc.tapXY(intent.x, intent.y, intent.double)) "Gesture bheja (${intent.x.toInt()}, ${intent.y.toInt()}). App ne kya kiya wo screen par dekho." else "Gesture nahi chala."
-            is Intent.DragXY -> if (svc.isSensitiveScreen()) BLOCKED
+            is Intent.DragXY -> if (!svc.readableAndSafe()) refusal(svc)
+                else if (!svc.pointIsResolvedAndHarmless(intent.x1, intent.y1) || !svc.pointIsResolvedAndHarmless(intent.x2, intent.y2)) UNRESOLVED
                 else if (svc.dragXY(intent.x1, intent.y1, intent.x2, intent.y2)) "Drag gesture bheja. Screen par dekho." else "Drag nahi chala."
-            is Intent.Pinch -> if (svc.isSensitiveScreen()) BLOCKED
+            is Intent.Pinch -> if (!svc.readableAndSafe()) refusal(svc)
                 else if (svc.pinch(intent.zoomIn)) "Pinch ${if (intent.zoomIn) "in" else "out"} gesture bheja. Zoom hua ya nahi screen par dekho." else "Pinch nahi chala."
             is Intent.Scroll -> when {
                 svc.isSensitiveScreen() -> BLOCKED
@@ -128,6 +133,7 @@ object ScreenControl {
                 "Screen par (sirf is device pe padha gaya, kahin nahi bheja):\n" + text.take(600)
             }
             is Intent.AskAiAboutScreen -> {
+                if (!cloudAllowed) return CLOUD_OFF
                 val raw = svc.screenTextOnDevice() ?: return blockedOrEmpty(svc)
                 val redacted = ScreenSafety.redact(raw).take(3000)
                 val answer = askAi(intent.question, redacted)
@@ -136,6 +142,14 @@ object ScreenControl {
             }
         }
     }
+
+    const val CLOUD_OFF =
+        "Screen ka text AI ko bhejna abhi band hai - uski permission abhi baaki hai, isliye maine screen padhi hi nahi. 'Screen padho' bologe to main sirf is phone par padhunga, kahin bhejunga nahi."
+    const val UNRESOLVED =
+        "Is jagah par kya hai ye screen se pakka nahi hua (ya wo send/pay/delete jaisa ho sakta hai), isliye gesture nahi chalaya. Button ka naam bolo, jaise 'tap Settings'."
+    const val UNREADABLE =
+        "Abhi screen padhi nahi ja rahi (koi readable window nahi), isliye main kuch type ya gesture nahi karunga."
+    private fun refusal(svc: RoutAccessibilityService) = if (svc.isSensitiveScreen()) BLOCKED else UNREADABLE
 
     private const val BLOCKED =
         "Ye screen sensitive lag rahi hai (password, OTP ya payment). Main is screen ko na padhunga na is pe kuch karunga."
