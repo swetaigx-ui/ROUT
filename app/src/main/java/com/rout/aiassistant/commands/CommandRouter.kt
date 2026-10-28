@@ -161,6 +161,21 @@ class CommandRouter(
     /** Counts armed confirmations so a routine can halt at the first one (single pending slot, never auto-approved). */
     private var confirmRequests = 0
     private var contactError = ""
+    internal fun groundedRecap(h: List<ChatTurn>): String {
+        val pairs = ArrayList<Pair<String, String>>()
+        var i = 0
+        while (i < h.size) {
+            if (h[i].role == "user") {
+                val reply = h.getOrNull(i + 1)?.takeIf { it.role != "user" }?.text ?: ""
+                pairs.add(h[i].text.take(60) to reply.take(80))
+                i += if (reply.isEmpty()) 1 else 2
+            } else i++
+        }
+        if (pairs.isEmpty()) return "Is baatcheet mein abhi tak kuch nahi hua. Mere paas pichhli baatcheet ki yaad yahan nahi hai."
+        val last = pairs.takeLast(3)
+        return "Is baatcheet mein ab tak: " + last.joinToString(" | ") { (u, r) -> "tumne \"$u\"" + (if (r.isNotEmpty()) " -> ROUT: \"$r\"" else " (jawab nahi mila)") } +
+            ". Ye sirf is chat ka record hai; ye nahi bata sakti ki kaam phone par ho gaya, jab tak upar result na likha ho."
+    }
     /** Last armed send/call draft, for corrections. Cleared when the action runs or after 90s. */
     private data class Draft(val kind: String, val name: String, val body: String, val at: Long)
     private var lastDraft: Draft? = null
@@ -249,6 +264,11 @@ class CommandRouter(
         val t = HindiNormal.dedupeRepeat(HindiNormal.latinize(raw.lowercase().trim()))
         val permNotified = object { var done = false }
         fun needPerm() { if (!permNotified.done) { permNotified.done = true; onPermissionNeeded(raw) } }
+
+        // --- Grounded recap: only what is actually in this conversation. No mood, no remembered-from-before claims. ---
+        if (Regex("^(?:pichhli baat|pichli baat|abhi tak kya (?:hua|kiya)|recap|ab tak kya hua|humne kya kiya|hamne kya kiya|kya kya hua)(?:\\s+(?:batao|bolo|sunao))?\\??$").matches(t)) {
+            return true to groundedRecap(history())
+        }
 
         // --- Diagnostic: package visibility check ---
         if (Regex("(?:kitne\\s*apps?|how\\s*many\\s*apps?).*(?:dikh|visible|dekh)|apps?\\s*(?:dikhte|visible)\\s*(?:hain|hai)?").containsMatchIn(t)) {
@@ -1146,7 +1166,7 @@ class CommandRouter(
                         if (chain == null) true to r.text
                         else if (chain.error != null) true to (visible + " (AI ka action plan reject hua: " + chain.error + ". Kuch nahi chalaya.)")
                         else if (chain.steps.isEmpty()) true to visible
-                        else true to ("AI ne ye plan diya: " + chain.steps.joinToString(" -> ") + ". " + runValidatedChain(chain.steps))
+                        else true to ("AI ne ye plan diya: " + chain.steps.joinToString(" -> ") + ". " + runValidatedChain(chain.steps).removePrefix("Routine: ai chain. "))
                     }
                     is AiResult.SetupRequired -> false to r.message
                     is AiResult.Failure -> false to friendlyFailure(r.reason)

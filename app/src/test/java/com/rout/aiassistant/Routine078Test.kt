@@ -234,6 +234,21 @@ class SendCallBoundary079Test {
         assertTrue(r, r.contains("Yahin ruki"))
     }
 
+    @Test fun recapIsGroundedInThisChatOnly() = runBlocking {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(ctx, RoutDatabase::class.java).allowMainThreadQueries().build()
+        var hist = emptyList<com.rout.aiassistant.ai.ChatTurn>()
+        val rt = CommandRouter(ctx, db, Prefs(ctx), { ProviderManager("", "", false, null) }, { hist }, { armed.add(it) })
+        val empty = rt.handle("pichhli baat batao", localOnly = true)
+        assertTrue(empty, empty.contains("kuch nahi hua"))
+        hist = listOf(com.rout.aiassistant.ai.ChatTurn("user", "rahul ko whatsapp bhejo hello"),
+            com.rout.aiassistant.ai.ChatTurn("rout", "Rahul Sharma ko WhatsApp: hello - confirm karo"))
+        val r = rt.handle("recap", localOnly = true)
+        assertTrue(r, r.contains("rahul ko whatsapp bhejo hello") && r.contains("confirm karo"))
+        assertFalse(r, r.lowercase().contains("mood") || r.lowercase().contains("khush") || r.lowercase().contains("udaas"))
+        assertTrue(r, r.contains("jab tak upar result na likha ho"))
+    }
+
     @Test fun validatedChainHaltsAtSendConfirmation() = runBlocking {
         val rt = router()
         val c = com.rout.aiassistant.commands.ActionChain.parse(
