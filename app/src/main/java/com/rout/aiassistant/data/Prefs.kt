@@ -38,10 +38,15 @@ class Prefs(private val context: Context) {
         val BRIEFING_HOUR = intPreferencesKey("briefing_hour")
         val BRIEFING_MINUTE = intPreferencesKey("briefing_minute")
         /** Cloud transfer of screen content. New key on purpose: no older toggle can enable it. Default OFF. */
+        val PERSONALITY_JSON = stringPreferencesKey("personality_json_v1")
         val NOTIF_REPLY_CONSENT_V1 = booleanPreferencesKey("notif_reply_consent_v1")
         val SCREEN_IMAGE_CONSENT_V1 = booleanPreferencesKey("screen_image_consent_v1")
         val SCREEN_CLOUD_CONSENT_V2 = booleanPreferencesKey("screen_cloud_consent_v2")
     }
+
+    val personality: Flow<com.rout.aiassistant.ai.PersonalitySettings> = context.ds.data.map { com.rout.aiassistant.ai.PersonalitySettings.fromJson(it[PERSONALITY_JSON]) }
+    suspend fun personalityNow(): com.rout.aiassistant.ai.PersonalitySettings = personality.first()
+    suspend fun setPersonality(v: com.rout.aiassistant.ai.PersonalitySettings) = context.ds.edit { it[PERSONALITY_JSON] = v.toJson() }
 
     suspend fun notifReplyAllowed(): Boolean = context.ds.data.first()[NOTIF_REPLY_CONSENT_V1] == true
     val notifReplyFlow: Flow<Boolean> = context.ds.data.map { it[NOTIF_REPLY_CONSENT_V1] == true }

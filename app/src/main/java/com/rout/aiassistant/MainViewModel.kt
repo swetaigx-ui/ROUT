@@ -60,6 +60,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val devAiEnabled = prefs.devAiEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val translateMode = prefs.translateMode.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val userName = prefs.userName.stateIn(viewModelScope, SharingStarted.Eagerly, "")
+    val personality = prefs.personality.stateIn(viewModelScope, SharingStarted.Eagerly, com.rout.aiassistant.ai.PersonalitySettings())
+    internal val personalityCtl = com.rout.aiassistant.ai.PersonalityController()
     val assistantName = prefs.assistantName.stateIn(viewModelScope, SharingStarted.Eagerly, "")
     suspend fun setAssistantName(v: String): Boolean = prefs.setAssistantName(v)
     private val liveGate = com.rout.aiassistant.voice.LiveAddressGate()
@@ -181,6 +183,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (utter.isBlank()) return
         viewModelScope.launch {
             val cid = conversationId.value
+            if (personalityTurn(utter, fromLive = true, stopOnly = true)) return@launch
             if (_confirm.value != null) {
                 val t = utter.trim().lowercase().trimEnd('.', '!')
                 val yes = setOf("haan", "ha", "han", "haan ji", "han ji", "yes", "ok", "okay", "kar do", "haan kar do", "confirm", "theek hai", "haan bolo")
@@ -192,6 +195,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             // With a saved assistant name, LIVE commands run only when addressed to that name (or as a short follow-up).
             val toRun = liveGate.accept(utter, assistantName.value, System.currentTimeMillis()) ?: return@launch
+            if (personalityTurn(toRun, fromLive = true)) return@launch
             val reply = router.handle(toRun, localOnly = true)
             if (reply.isNotBlank()) {
                 db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter))
@@ -265,6 +269,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     if (confirmSlot.expireIfDue()) engine.setState(AssistantState.IDLE)
                 }
             },
+            styleNote = { personalityCtl.styleNote(personality.value, userName.value) },
             onPermissionNeeded = { cmd -> pendingAfterPermission = cmd },
             visionImages = { visionDoc?.images ?: emptyList() },
             onClearVision = { visionDoc = null }
@@ -273,6 +278,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         // LIVE voice turns: a completed user utterance runs clear device commands
         // locally (app opens, timers, DND...) while the model handles conversation.
         live.onUserTurn = { utter -> onLiveUserTurn(utter) }
+        // Tone-only personality settings reach the LIVE model as one compact note when a session is up and whenever they change.
+        viewModelScope.launch {
+            combine(live.state, personality, userName) { st, ps, nm -> Triple(st, ps, nm) }
+                .distinctUntilChanged().collect { (st, ps, nm) ->
+                    if (st == "live") personalityCtl.styleNote(ps, nm, compact = true).takeIf { it.isNotEmpty() }?.let { live.sendContextNote(it, cap = 700) }
+                }
+        }
         viewModelScope.launch {
             // Persona mode switches ROUT's talking style AND its voice (Ruby pattern).
             personaMode.collect { id ->
@@ -320,6 +332,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (text.isBlank()) return
         viewModelScope.launch {
             val cid = conversationId.value
+            if (personalityTurn(text, fromLive = false)) return@launch
             // Voice confirmation for a pending call/message: "haan" confirms, "nahi" cancels.
             if (_confirm.value != null) {
                 val t = text.trim().lowercase().trimEnd('.', '!')
@@ -365,6 +378,48 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 try { com.rout.aiassistant.service.RoutNotify.postReply(getApplication(), reply) } catch (_: Exception) {}
             }
         }
+    }
+
+    // ---- Personality layer (tone only; everything OFF by default) ----
+
+    fun setPersonality(s: com.rout.aiassistant.ai.PersonalitySettings) { viewModelScope.launch { prefs.setPersonality(s) } }
+    fun personalityStop() = viewModelScope.launch { applyPersonalityStop(personality.value.copy(suspended = true), "Theek hai. Ruk gayi. Ab normal baat karte hain.", false) }
+    fun personalityResume() { setPersonality(personality.value.copy(suspended = false)) }
+
+    private suspend fun applyPersonalityStop(newSettings: com.rout.aiassistant.ai.PersonalitySettings, ack: String, fromLive: Boolean) {
+        prefs.setPersonality(newSettings)
+        // STOP outranks everything: silence now, drop queued lines, and clear any pending confirm/draft.
+        engine.stopSpeaking()
+        live.interruptSpeech()
+        confirmSlot.clear()
+        if (::router.isInitialized) router.clearDraft()
+        engine.setState(AssistantState.IDLE)
+        db.conversations().insertMessage(Message(conversationId = conversationId.value, role = "rout", text = ack))
+        if (!fromLive) engine.speak(ack)
+    }
+
+    /** Handles stop/resume/mode commands and local expressive replies. True when the utterance was fully handled here. */
+    internal suspend fun personalityTurn(text: String, fromLive: Boolean, stopOnly: Boolean = false): Boolean {
+        val s = prefs.personalityNow()
+        val speaking = assistantState.value == AssistantState.SPEAKING || live.speaking.value
+        // LIVE, before the saved-name gate: only STOP is accepted (safety). Every other personality command waits for the gate.
+        if (stopOnly && !personalityCtl.isStop(text, s, speaking)) return false
+        val out = personalityCtl.decide(text, s, userName.value, speaking, localOnly = fromLive) ?: return false
+        val cid = conversationId.value
+        db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = text))
+        when (out) {
+            is com.rout.aiassistant.ai.PersonalityOutcome.Stop -> applyPersonalityStop(out.settings, out.ack, fromLive)
+            is com.rout.aiassistant.ai.PersonalityOutcome.Control -> {
+                prefs.setPersonality(out.settings)
+                db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = out.ack))
+                if (!fromLive) engine.speak(out.ack)
+            }
+            is com.rout.aiassistant.ai.PersonalityOutcome.Reply -> {
+                db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = out.text))
+                if (!fromLive) engine.speak(out.text.take(400))
+            }
+        }
+        return true
     }
 
     fun confirmPending(viaVoice: Boolean = false) {

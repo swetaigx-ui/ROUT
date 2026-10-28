@@ -135,7 +135,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                             ) {
                                 listOf(
                                     "Naam" to RefIcons.User, "Assistant ka naam" to RefIcons.Mic, "Connection" to RefIcons.Link,
-                                    "ROUT persona" to RefIcons.Spark, "ROUT voice" to RefIcons.Mic,
+                                    "ROUT persona" to RefIcons.Spark, "Personality" to RefIcons.Spark, "ROUT voice" to RefIcons.Mic,
                                     "Quick controls" to RefIcons.Zap, "Permissions and privacy" to RefIcons.Shield,
                                     "Routines" to RefIcons.Repeat, "Weather" to RefIcons.Cloud,
                                     "Screens" to RefIcons.Layers, "About ROUT" to RefIcons.Info
@@ -251,6 +251,76 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                             RefChip(pz.label, selected = currentPersona == pz.id) { vm.setPersona(pz.id) }
                         }
                     }
+                }
+
+                // --- Personality (tone only, everything OFF by default) ---
+                val pz by vm.personality.collectAsState()
+                val pctl = remember { com.rout.aiassistant.ai.PersonalityController() }
+                val pVoice by vm.prefs.voiceName.collectAsState(initial = "Achernar")
+                var stopInput by remember(pz.stopPhrase) { mutableStateOf(pz.stopPhrase) }
+                var resumeInput by remember(pz.resumePhrase) { mutableStateOf(pz.resumePhrase) }
+                var addrInput by remember(pz.preferredAddress) { mutableStateOf(pz.preferredAddress) }
+                SettingsCard("Personality", trailing = if (pz.suspended) "Ruki hui" else pz.mode.label, onY = { sectionOffsets["Personality"] = it }) {
+                    Text(
+                        "Sirf bolne ka andaaz badalta hai - ROUT kya kar sakti hai, permissions, ya kaunsa kaam hua, wo nahi. Sab kuch default mein OFF. Romantic/jealousy sirf fictional, halka-phulka, non-sexual dialogue hai; ROUT AI hai aur insaani feelings ka dawa nahi karti. 'stop', 'bas ab ruko' ya 'OK OK, ruko' bolo to turant ruk jaata hai. Mode ka summary aur tumhara saved naam AI ko tumhari chat ke saath jaata hai.",
+                        color = RefMuted, fontSize = 13.sp, lineHeight = 20.sp
+                    )
+                    if (pz.suspended) {
+                        Text("Expressive dialogue abhi ruka hua hai.", color = RefAccent, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(Modifier.weight(1f)) { RefPrimaryButton("Stop", enabled = !pz.suspended) { vm.personalityStop() } }
+                        Box(Modifier.weight(1f)) { RefPrimaryButton("Resume", enabled = pz.suspended) { vm.personalityResume() } }
+                    }
+                    Text("Mode", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        com.rout.aiassistant.ai.PMode.values().forEach { m ->
+                            RefChip(m.label, selected = pz.mode == m) {
+                                vm.setPersonality(pz.copy(mode = m, suspended = false,
+                                    romanticOn = if (m == com.rout.aiassistant.ai.PMode.ROMANTIC) true else pz.romanticOn))
+                            }
+                        }
+                    }
+                    if (pz.calmMode) Text("${pz.mode.label} mode mein romantic, jealousy aur teasing band rehte hain.", color = RefDim, fontSize = 12.sp)
+                    RefSwitchRow("Romantic dialogue", "Fictional, affectionate, non-sexual. 'Romantic mode off' bolke band.", pz.romanticOn) {
+                        vm.setPersonality(pz.copy(romanticOn = it, affection = if (it && pz.affection == 0) 2 else pz.affection, suspended = if (it) false else pz.suspended))
+                    }
+                    if (pz.romanticOn) {
+                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            (1..3).forEach { l -> RefChip(pctl.levelName(l), selected = pz.affection == l) { vm.setPersonality(pz.copy(affection = l)) } }
+                        }
+                    }
+                    RefSwitchRow("Playful jealousy", "Kabhi kabhi, mazaak mein; family/dost/colleague par kabhi nahi.", pz.jealousy > 0) {
+                        vm.setPersonality(pz.copy(jealousy = if (it) 2 else 0, suspended = if (it) false else pz.suspended))
+                    }
+                    if (pz.jealousy > 0) {
+                        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(1 to "Mild", 2 to "Playful", 3 to "Extra dramatic").forEach { (l, n) -> RefChip(n, selected = pz.jealousy == l) { vm.setPersonality(pz.copy(jealousy = l)) } }
+                        }
+                    }
+                    RefSwitchRow("Playful anger", "Harmless dramatic gussa, sirf mazaak.", pz.playfulAnger) { vm.setPersonality(pz.copy(playfulAnger = it, suspended = if (it) false else pz.suspended)) }
+                    Text("Intensity", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Low", "Medium", "High").forEachIndexed { i, n -> RefChip(n, selected = pz.intensity == i) { vm.setPersonality(pz.copy(intensity = i)) } }
+                    }
+                    Text("Language", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("auto" to "Auto", "hi" to "Hindi", "hinglish" to "Hinglish", "en" to "English").forEach { (k, n) -> RefChip(n, selected = pz.language == k) { vm.setPersonality(pz.copy(language = k)) } }
+                    }
+                    Text("Address (naam upar 'Aapka naam' mein saved hai)", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("neutral" to "Neutral", "friendly" to "Friendly", "cute" to "Cute", "custom" to "Custom").forEach { (k, n) -> RefChip(n, selected = pz.addressStyle == k) { vm.setPersonality(pz.copy(addressStyle = k)) } }
+                    }
+                    RefField(addrInput, { addrInput = com.rout.aiassistant.ai.PersonalitySettings.cleanName(it); vm.setPersonality(pz.copy(preferredAddress = addrInput)) }, "Preferred address (blank = saved naam)")
+                    RefField(stopInput, { stopInput = it.take(40); vm.setPersonality(pz.copy(stopPhrase = stopInput)) }, "Stop phrase")
+                    RefField(resumeInput, { resumeInput = it.take(40); vm.setPersonality(pz.copy(resumePhrase = resumeInput)) }, "Resume phrase (optional)")
+                    Text("Voice style (nazdeeki available Gemini voice; exact character ki guarantee nahi)", color = RefDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Despina" to "Soft and gentle", "Zephyr" to "Cute and cheerful", "Aoede" to "Expressive anime-inspired", "Achernar" to "Calm and natural", "Sulafat" to "Professional", "Achird" to "Energetic and playful").forEach { (v, n) ->
+                            RefChip(n, selected = pVoice == v) { scope.launch { vm.prefs.setVoiceName(v) } }
+                        }
+                    }
+                    Text("Speech speed 'ROUT voice' card mein hai. Voice commands: 'romantic mode on/off', 'thoda sweet bolo', 'aur dramatic bano', 'normal mode mein aao', 'professional mode', 'jealousy on/off'.", color = RefDim, fontSize = 12.sp, lineHeight = 18.sp)
                 }
 
                 // --- ROUT voice ---

@@ -56,6 +56,7 @@ class LiveSession(private val appContext: Context) {
     private var ws: WebSocket? = null
     private var record: AudioRecord? = null
     private var track: AudioTrack? = null
+    @Volatile private var muteUntilTurnEnd = false
     private var micThread: Thread? = null
     @Volatile private var running = false
     @Volatile private var ready = false
@@ -109,11 +110,11 @@ class LiveSession(private val appContext: Context) {
                 fail("Live error: " + e.optString("message", "upstream error").take(120)); return
             }
             val sc = m.optJSONObject("serverContent") ?: return
-            if (sc.optBoolean("interrupted")) { _speaking.value = false; track?.pause().also { track?.flush(); track?.play() } }
+            if (sc.optBoolean("interrupted")) { muteUntilTurnEnd = false; _speaking.value = false; track?.pause().also { track?.flush(); track?.play() } }
             sc.optJSONObject("modelTurn")?.optJSONArray("parts")?.let { parts ->
                 for (i in 0 until parts.length()) {
                     val d = parts.getJSONObject(i).optJSONObject("inlineData")?.optString("data").orEmpty()
-                    if (d.isNotEmpty()) { _speaking.value = true; play(Base64.decode(d, Base64.DEFAULT)) }
+                    if (d.isNotEmpty() && !muteUntilTurnEnd) { _speaking.value = true; play(Base64.decode(d, Base64.DEFAULT)) }
                 }
             }
             // What the model heard from the user's mic - drives the on-screen
@@ -123,6 +124,7 @@ class LiveSession(private val appContext: Context) {
             }
             sc.optJSONObject("outputTranscription")?.optString("text")?.let { _transcript.value = (_transcript.value + it).takeLast(600) }
             if (sc.optBoolean("turnComplete")) {
+                muteUntilTurnEnd = false
                 _transcript.value = ""; _speaking.value = false
                 _heard.value = ""
                 turnFlow.onTurnComplete(System.currentTimeMillis())?.let { said -> onUserTurn?.invoke(said) }
@@ -180,12 +182,19 @@ class LiveSession(private val appContext: Context) {
     /** Test seam: pretend the socket is up with this (fake) WebSocket. */
     internal fun attachForTest(socket: WebSocket) { ws = socket; _state.value = "live" }
 
-    fun sendContextNote(note: String) {
+    fun sendContextNote(note: String, cap: Int = 400) {
         if (_state.value != "live") return
         try {
             ws?.send(JSONObject().put("realtimeInput", JSONObject()
-                .put("text", note.take(400))).toString())
+                .put("text", note.take(cap))).toString())
         } catch (_: Exception) {}
+    }
+
+    /** User said STOP: silence the model audio now (flush what is queued, drop the rest of this turn). */
+    fun interruptSpeech() {
+        muteUntilTurnEnd = true
+        _speaking.value = false
+        try { track?.pause(); track?.flush(); track?.play() } catch (_: Exception) {}
     }
 
     private fun fail(msg: String) { _error.value = msg; stop(); _state.value = "failed" }

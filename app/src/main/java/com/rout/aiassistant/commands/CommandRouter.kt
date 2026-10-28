@@ -163,7 +163,9 @@ class CommandRouter(
     private val contentFingerprint: () -> String? = { com.rout.aiassistant.service.RoutAccessibilityService.instance?.screenTextOnDevice()?.let { java.security.MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) } } },
     private val foregroundPkg: () -> String? = { com.rout.aiassistant.service.RoutAccessibilityService.instance?.foregroundPackage() },
     private val notifTargets: () -> List<ReplyTarget> = { com.rout.aiassistant.service.RoutMediaListenerService.instance?.replyTargets() ?: emptyList() },
-    private val notifReplier: (ReplyTarget, String) -> Boolean = { t, w -> com.rout.aiassistant.service.RoutMediaListenerService.instance?.sendReply(t.key, w) ?: false }
+    private val notifReplier: (ReplyTarget, String) -> Boolean = { t, w -> com.rout.aiassistant.service.RoutMediaListenerService.instance?.sendReply(t.key, w) ?: false },
+    /** Tone-only personality settings note (empty at defaults). Prefixed to ordinary AI chat only, never to screen/notification requests. */
+    private val styleNote: () -> String = { "" }
 ) {
     private val confirmSink: (ConfirmRequest) -> Unit = requestConfirmation
     /** Counts armed confirmations so a routine can halt at the first one (single pending slot, never auto-approved). */
@@ -1320,7 +1322,9 @@ class CommandRouter(
                     "Translate the following into $target. Reply with ONLY the translation, no explanation.\n\n$raw"
                 }
                 val chainHint = if (translateOn) "" else ActionChain.HINT
-                when (val r = pm.provider()!!.chat(safeHistory(), effectiveRaw + chainHint, visionImages())) {
+                val note = if (translateOn) "" else styleNote()
+                val styled = if (note.isEmpty()) effectiveRaw else note + "\n\nUser: " + effectiveRaw
+                when (val r = pm.provider()!!.chat(safeHistory(), styled + chainHint, visionImages())) {
                     is AiResult.Reply -> {
                         val (visible, chain) = if (translateOn) r.text to null else ActionChain.extract(r.text)
                         if (chain == null) true to r.text
