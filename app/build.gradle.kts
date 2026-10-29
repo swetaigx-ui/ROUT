@@ -13,8 +13,8 @@ android {
         applicationId = "com.rout.aiassistant"
         minSdk = 26
         targetSdk = 36
-        versionCode = 55
-        versionName = "0.7.27"
+        versionCode = 56
+        versionName = "0.7.28"
         vectorDrawables { useSupportLibrary = true }
     }
 

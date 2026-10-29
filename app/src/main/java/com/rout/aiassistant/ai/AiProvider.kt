@@ -27,7 +27,7 @@ interface AiProvider {
     suspend fun chat(history: List<ChatTurn>, userText: String, images: List<SharedImage> = emptyList()): AiResult
 }
 
-private fun post(url: String, body: JSONObject, headers: Map<String, String>, timeoutMs: Int = 20000): Pair<Int, String> {
+internal fun post(url: String, body: JSONObject, headers: Map<String, String>, timeoutMs: Int = 20000): Pair<Int, String> {
     val conn = (URL(url).openConnection() as HttpURLConnection).apply {
         requestMethod = "POST"
         connectTimeout = timeoutMs

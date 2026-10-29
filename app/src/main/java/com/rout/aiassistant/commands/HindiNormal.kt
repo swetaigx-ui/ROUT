@@ -8,6 +8,33 @@ package com.rout.aiassistant.commands
  */
 object HindiNormal {
 
+    /** Spoken-command vocabulary (LIVE returns Devanagari transcripts): app names, screen verbs, system controls. Compounds first. */
+    private val VOCAB: List<Pair<String, String>> = listOf(
+        "डू नॉट डिस्टर्ब" to "do not disturb", "डू नॉट डिस्टर्भ" to "do not disturb",
+        "फ्लैशलाइट" to "flashlight", "फ़्लैशलाइट" to "flashlight", "फ्लैश लाइट" to "flashlight", "फ़्लैश लाइट" to "flashlight",
+        "वाई-फाई" to "wifi", "वाईफाई" to "wifi", "वाईफ़ाई" to "wifi", "वाई फाई" to "wifi", "वाई फ़ाई" to "wifi",
+        "ब्लूटूथ" to "bluetooth", "हॉटस्पॉट" to "hotspot", "वॉल्यूम" to "volume", "ब्राइटनेस" to "brightness",
+        "व्हाट्सएप" to "whatsapp", "व्हाट्सऐप" to "whatsapp", "वॉट्सऐप" to "whatsapp", "वाट्सएप" to "whatsapp", "वॉट्सएप" to "whatsapp",
+        "यूट्यूब" to "youtube", "यू ट्यूब" to "youtube", "इंस्टाग्राम" to "instagram", "इंस्टा" to "instagram", "फेसबुक" to "facebook",
+        "टेलीग्राम" to "telegram", "स्नैपचैट" to "snapchat", "स्पॉटिफाई" to "spotify", "क्रोम" to "chrome", "गूगल मैप्स" to "google maps",
+        "गूगल" to "google", "कैमरा" to "camera", "गैलरी" to "gallery", "सेटिंग्स" to "settings", "सेटिंग" to "settings",
+        "रील्स" to "reels", "रील" to "reel", "शॉर्ट्स" to "shorts", "क्लिक करो" to "click karo", "क्लिक कर दो" to "click karo",
+        "लाइक करो" to "like karo", "लाइक कर दो" to "like karo", "स्क्रॉल करो" to "scroll karo", "स्क्रॉल कर दो" to "scroll karo",
+        "सर्च करो" to "search karo", "सर्च कर दो" to "search karo", "सर्च" to "search", "क्लिक" to "click", "लाइक" to "like", "स्क्रॉल" to "scroll",
+        "स्टेटस" to "status", "प्ले करो" to "play karo", "प्ले कर दो" to "play karo", "प्ले" to "play",
+        "भेज दो" to "bhej do", "भेजो" to "bhejo", "सेंड करो" to "send karo", "सेंड कर दो" to "send kar do", "सेंड" to "send",
+        "लिख कर" to "likh kar", "लिखकर" to "likh kar", "लिख के" to "likh ke", "हाय" to "hi", "हेलो" to "hello",
+        "देखो" to "dekho", "दिखाओ" to "dikhao", "ढूंढो" to "dhundho", "ढूँढो" to "dhundho",
+        "बढ़ाओ" to "badhao", "बढाओ" to "badhao", "घटाओ" to "kam karo", "कम करो" to "kam karo",
+        "नीचे" to "neeche", "ऊपर" to "upar", "होम" to "home", "बैक" to "back", "पीछे" to "piche", "जाओ" to "jao", "वापस" to "wapas",
+        "मेरा" to "mera", "मेरी" to "meri", "मेरे" to "mere",
+        "ओपन" to "open", "चालू" to "chalu", "बंद" to "band"
+    )
+    // Short function words only as whole words, so they never mangle longer Devanagari words.
+    private val WHOLE: List<Pair<Regex, String>> = listOf(
+        "और" to "aur", "फिर" to "phir", "ऑन" to "on", "ऑफ" to "off", "में" to "mein", "पर" to "par", "पे" to "pe", "से" to "se", "का" to "ka", "की" to "ki"
+    ).map { (d, l) -> Regex("(?<![\\u0900-\\u097F])" + d + "(?![\\u0900-\\u097F])") to l }
+
     private val PHRASES: List<Pair<String, String>> = listOf(
         "\u091f\u093e\u0907\u092e\u0930" to "timer",
         "\u0938\u094d\u0915\u094d\u0930\u0940\u0928 \u0936\u0949\u091f" to "screenshot",
@@ -89,7 +116,9 @@ object HindiNormal {
     fun latinize(t: String): String {
         if (t.none { it in '\u0900'..'\u097F' }) return t
         var out = t
+        for ((dev, lat) in VOCAB) out = out.replace(dev, lat)
         for ((dev, lat) in PHRASES) out = out.replace(dev, lat)
+        for ((re, lat) in WHOLE) out = re.replace(out, lat)
         out = LO.replace(out, "lo")
         return out.replace(Regex("\\s+"), " ").trim()
     }

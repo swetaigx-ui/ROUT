@@ -194,7 +194,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             // With a saved assistant name, LIVE commands run only when addressed to that name (or as a short follow-up).
-            val toRun = liveGate.accept(utter, assistantName.value, System.currentTimeMillis()) ?: return@launch
+            val toRun = liveGate.accept(utter, assistantName.value, System.currentTimeMillis()) ?: run {
+                // Not addressed to the saved name: nothing runs. If it sounded like a phone command, say why instead of staying silent.
+                if (com.rout.aiassistant.commands.SpokenCommands.looksLikeCommand(com.rout.aiassistant.commands.HindiNormal.latinize(utter.lowercase()))) {
+                    db.conversations().insertMessage(Message(conversationId = cid, role = "rout",
+                        text = "Command nahi chala: saved naam \"${assistantName.value}\" se shuru nahi hua. Aise bolo: \"${assistantName.value}, ${utter.trim()}\"."))
+                }
+                return@launch
+            }
             if (personalityTurn(toRun, fromLive = true)) return@launch
             val reply = router.handle(toRun, localOnly = true)
             if (reply.isNotBlank()) {
@@ -205,6 +212,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 // (e.g. startActivity succeeded) - not visual confirmation. The note
                 // says so, and the model is told not to upgrade it into a promise.
                 live.sendContextNote(router.liveNoteFor(utter, reply))
+            }
+        }
+    }
+
+
+    // ---- Native device-control engine (plans from the backend, validated here; this app stays the authority) ----
+    private val controlEngine: com.rout.aiassistant.control.ControlEngine by lazy {
+        com.rout.aiassistant.control.ControlEngine(
+            com.rout.aiassistant.control.AndroidExecutor(app, onCancelRequested = { controlEngine.stop() }),
+            confirm = { desc -> controlConfirm(desc) })
+    }
+    val controlSnapshot: StateFlow<com.rout.aiassistant.control.ControlSnapshot> get() = controlEngine.snapshot
+    fun stopAutomation() { controlEngine.stop(); confirmSlot.clear(); engine.setState(AssistantState.IDLE) }
+    fun dismissControl() = controlEngine.reset()
+
+    /** One confirmation through the normal single pending slot. Declines on cancel, replacement, Stop or 90 s. */
+    private suspend fun controlConfirm(desc: String): Boolean {
+        val d = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        val req = ConfirmRequest("control", desc) { d.complete(true); "Theek hai, chala rahi hoon." }
+        confirmSlot.arm(req)
+        engine.setState(AssistantState.WAITING_CONFIRMATION)
+        val watcher = viewModelScope.launch {
+            confirmSlot.state.first { it !== req }
+            kotlinx.coroutines.delay(600)
+            d.complete(false)
+        }
+        val ok = kotlinx.coroutines.withTimeoutOrNull(90_000L) { d.await() } ?: false
+        watcher.cancel()
+        if (!ok && confirmSlot.state.value === req) confirmSlot.clear()
+        return ok
+    }
+
+    /** Backend-planned execution for a command the local routes did not understand. Null = nothing planned (caller falls through). */
+    private suspend fun controlPlan(text: String): String? {
+        if (!isDeviceEnrolled() || controlEngine.isRunning()) return null
+        val id = com.rout.aiassistant.control.PlanClient.newRequestId()
+        controlEngine.planning(id)
+        return when (val r = com.rout.aiassistant.control.PlanClient.fetch(backendUrl.value, enrollment.deviceToken, id, text)) {
+            is com.rout.aiassistant.control.PlanClient.Result.Plan -> when (val o = controlEngine.run(r.plan)) {
+                is com.rout.aiassistant.control.ControlOutcome.Done -> o.message
+                is com.rout.aiassistant.control.ControlOutcome.Rejected -> o.reason
+            }
+            is com.rout.aiassistant.control.PlanClient.Result.Failure -> {
+                // Undeployed endpoint / no valid plan: quiet reset so normal chat continues. Real errors stay visible in the strip.
+                if (r.reason.contains("deploy nahi") || r.reason.contains("valid plan nahi")) controlEngine.reset() else controlEngine.planningFailed(r.reason)
+                null
             }
         }
     }
@@ -272,7 +325,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             styleNote = { personalityCtl.styleNote(personalityCtl.effective(personality.value, personaMode.value), userName.value) },
             onPermissionNeeded = { cmd -> pendingAfterPermission = cmd },
             visionImages = { visionDoc?.images ?: emptyList() },
-            onClearVision = { visionDoc = null }
+            onClearVision = { visionDoc = null },
+            controlPlanner = { text -> controlPlan(text) }
         )
         engine.initTts()
         // LIVE voice turns: a completed user utterance runs clear device commands

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.rout.aiassistant.MainViewModel
+import com.rout.aiassistant.control.ControlState as CS
 import com.rout.aiassistant.data.Message
 import com.rout.aiassistant.ui.components.GlassBox
 import com.rout.aiassistant.ui.components.GlassFill
@@ -133,6 +134,8 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                         modifier = Modifier.size(46.dp).clickable { nav.navigate("settings") }.padding(12.dp))
                 }
             }
+
+            ControlStrip(vm)
 
             // ---- Stage: orb, status, caption ----
             Column(
@@ -360,4 +363,38 @@ private fun warbyStatusLabel(state: AssistantState, emotion: com.rout.aiassistan
         AssistantState.IDLE -> emotion?.name?.lowercase() ?: "idle"
     }
     return Warby.label(mode)
+}
+
+
+/** Execution progress for the device-control engine: current state, short log and a prominent Stop. Hidden when idle. */
+@Composable
+private fun ControlStrip(vm: MainViewModel) {
+    val snap by vm.controlSnapshot.collectAsState()
+    if (snap.state == com.rout.aiassistant.control.ControlState.IDLE) return
+    val active = snap.state in setOf(CS.PLANNING, CS.WAITING_FOR_CONFIRMATION, CS.EXECUTING, CS.VERIFYING)
+    val label = when (snap.state) {
+        CS.PLANNING -> "Command samajh rahi hoon"
+        CS.WAITING_FOR_CONFIRMATION -> "Confirmation ka intezaar"
+        CS.EXECUTING -> "Chal raha hai"
+        CS.VERIFYING -> "Check kar rahi hoon"
+        CS.COMPLETED -> "Ho gaya"
+        CS.FAILED -> "Nahi hua"
+        CS.CANCELLED -> "Roka gaya"
+        else -> ""
+    }
+    GlassBox(radius = 18.dp) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(label + if (snap.total > 0 && active) "  ${snap.step}/${snap.total}" else "", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    if (snap.message.isNotBlank()) Text(snap.message, color = Color(0xFFC9D2DE), fontSize = 13.sp, maxLines = 3)
+                }
+                Button(onClick = { if (active) vm.stopAutomation() else vm.dismissControl() },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (active) Color(0xFFB3261E) else Color(0xFF2A2F3A), contentColor = Color.White)) {
+                    Text(if (active) "STOP" else "OK")
+                }
+            }
+            snap.log.takeLast(3).forEach { Text(it, color = Color(0xFF8D97A6), fontSize = 11.sp, maxLines = 1) }
+        }
+    }
 }

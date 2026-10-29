@@ -165,10 +165,22 @@ class CommandRouter(
     private val notifTargets: () -> List<ReplyTarget> = { com.rout.aiassistant.service.RoutMediaListenerService.instance?.replyTargets() ?: emptyList() },
     private val notifReplier: (ReplyTarget, String) -> Boolean = { t, w -> com.rout.aiassistant.service.RoutMediaListenerService.instance?.sendReply(t.key, w) ?: false },
     /** Tone-only personality settings note (empty at defaults). Prefixed to ordinary AI chat only, never to screen/notification requests. */
-    private val styleNote: () -> String = { "" }
+    private val styleNote: () -> String = { "" },
+    /** Seams for the spoken-command actions (accessibility taps). Defaults use the live service; tests inject fakes. */
+    private val whatsappAutoSend: suspend () -> Boolean = { com.rout.aiassistant.service.RoutAccessibilityService.instance?.tapExact(listOf("send", "\u092d\u0947\u091c\u0947\u0902"), "com.whatsapp", 6000) ?: false },
+    private val likeTapper: suspend () -> String = { defaultLike(context) },
+    private val statusViewer: suspend () -> String = { defaultStatusView(context) },
+    /** Backend-planned control: gets a command the local routes did not understand; returns the outcome text, or null to fall through. */
+    private val controlPlanner: (suspend (String) -> String?)? = null
 ) {
     private val confirmSink: (ConfirmRequest) -> Unit = requestConfirmation
     /** Counts armed confirmations so a routine can halt at the first one (single pending slot, never auto-approved). */
+    private var lastApp = ""
+    private var lastAppAt = 0L
+    private fun noteApp(name: String) { lastApp = name; lastAppAt = nowMs() }
+    /** True when the named app was just opened/used through ROUT (10 min) or is the foreground app. */
+    private fun appContext(name: String, pkg: String): Boolean =
+        (lastApp == name && nowMs() - lastAppAt < 600_000L) || foregroundPkg() == pkg
     private var confirmRequests = 0
     private var contactError = ""
     /** Replies built from on-device private sources (screen text, notifications). Never sent back to the cloud as chat history. */
@@ -411,7 +423,8 @@ class CommandRouter(
     }
 
     private suspend fun singleStep(raw: String, localOnly: Boolean = false): Pair<Boolean, String> {
-        val t = HindiNormal.dedupeRepeat(HindiNormal.latinize(raw.lowercase().trim()))
+        val t0 = HindiNormal.dedupeRepeat(HindiNormal.latinize(raw.lowercase().trim()))
+        val t = SpokenCommands.rewrite(t0) ?: t0
         val permNotified = object { var done = false }
         fun needPerm() { if (!permNotified.done) { permNotified.done = true; onPermissionNeeded(raw) } }
 
@@ -440,6 +453,41 @@ class CommandRouter(
             }
         }
 
+        // --- Spoken commands (LIVE and typed): YouTube search words only, WhatsApp name+words, like, status ---
+        SpokenCommands.youtubeQuery(t, appContext("youtube", "com.google.android.youtube"))?.let { q ->
+            sayFirst("YouTube par dhoondh rahi hoon")
+            noteApp("youtube")
+            val r = DeviceActions.youtubeSearch(context, q); return r.ok to r.message
+        }
+        if (SpokenCommands.isStatusPost(t))
+            return false to "Status lagane ke liye batao: kya lagana hai (text ya photo) aur kisko dikhana hai? Abhi maine kuch post nahi kiya."
+        if (SpokenCommands.isStatusView(t)) { noteApp("whatsapp"); return true to statusViewer() }
+        if (SpokenCommands.isLike(t)) {
+            // A like is visible on the user's account: show what and where, and act only after confirmation.
+            val app = foregroundPkg() ?: "abhi khula app"
+            requestConfirmation(ConfirmRequest("like", "Like dabaun? App: $app. Ye tumhare account se dikhne wala action hai.") { likeTapper() })
+            return true to "Like dabane se pehle confirm chahiye (app: $app) - screen par confirm karo ya 'haan' bolo."
+        }
+        if (appContext("whatsapp", "com.whatsapp") || t.contains("whatsapp")) {
+            SpokenCommands.whatsappDirect(t)?.let { (name, body) ->
+                if (!has(Manifest.permission.READ_CONTACTS)) {
+                    needPerm(); return false to "Contact dhundhne ke liye contacts permission chahiye. Prompt mein allow karo - main apne aap dobara kar dungi."
+                }
+                // Consequential: the recipient (with number) and the exact words are shown and need the user's confirmation, every time.
+                val contact = resolveContact(name) ?: return false to contactError
+                lastDraft = Draft("wa", name, body, System.currentTimeMillis())
+                noteApp("whatsapp")
+                requestConfirmation(ConfirmRequest("whatsapp", "WhatsApp ${contact.first} (${contact.second}): \"$body\"") {
+                    lastDraft = null
+                    lastSent = Draft("wa", contact.first, body, System.currentTimeMillis())
+                    whatsappSender(context, contact.second, body)
+                    if (whatsappAutoSend()) "${contact.first} (${contact.second}) ko \"$body\" - send button dabaya. Phone ne bheja ya nahi, WhatsApp mein check kar lena."
+                    else "${contact.first} (${contact.second}) ka chat khul gaya, \"$body\" ready hai - send button nahi mila, bas send dabao."
+                })
+                return true to "${contact.first} (${contact.second}) ko WhatsApp: \"$body\" - screen par confirm karo ya 'haan' bolo."
+            }
+        }
+
         // --- App launching by trailing verb: "youtube kholo", "whatsapp khol do", "translate chalao" ---
         // Checked before every search rule so a named app opens instead of being searched.
         val openTarget = extractOpenTarget(t)
@@ -448,7 +496,7 @@ class CommandRouter(
             !openTarget.contains("\u0938\u0930\u094d\u091a")) {
             sayFirst("$openTarget khol rahi hoon")
             val r = DeviceActions.openApp(context, openTarget)
-            if (r.ok) return true to r.message
+            if (r.ok) { noteApp(openTarget.trim().lowercase()); return true to r.message }
             // Not an installed app - try it as a website instead of failing silently (latin names only).
             if (openTarget.none { it in '\u0900'..'\u097F' }) {
                 val w = DeviceActions.openWebsite(context, openTarget)
@@ -813,7 +861,7 @@ class CommandRouter(
             Regex("^(?:dark mode|dark theme)(?:\\s+(?:on|off))?(?:\\s+(?:karo|kar do))?$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "display"); return r.ok to r.message + " Dark mode wahi display settings mein hai - ek tap."
             }
-            Regex("^(?:hotspot)(?:\\s+(?:on|off|karo|kar do|chalu))?$").matches(t) -> {
+            Regex("^(?:hotspot)(?:\\s+(?:on|off|band|karo|kar do|chalu))*$").matches(t) -> {
                 val r = DeviceActions.openSystemPanel(context, "wireless"); return r.ok to r.message + " Hotspot wahi 'Hotspot & tethering' mein hai."
             }
         }
@@ -1164,6 +1212,8 @@ class CommandRouter(
         }
 
         // --- AI fallback ---
+        // Looks like a phone command that no local route understood: let the backend plan it (strictly validated, confirmations kept).
+        if (SpokenCommands.looksLikeCommand(t)) controlPlanner?.invoke(raw)?.let { return true to it }
         // LIVE localOnly: not a device command -> no action, no AI reply.
         if (localOnly) return false to ""
         return aiFallback(raw)
@@ -1360,4 +1410,23 @@ internal fun parseReminderAlt(t: String, now: Calendar = Calendar.getInstance())
         else if (timeInMillis <= now.timeInMillis) add(Calendar.DAY_OF_YEAR, 1)
     }
     return title to cal
+}
+
+
+private suspend fun defaultLike(context: Context): String {
+    val svc = com.rout.aiassistant.service.RoutAccessibilityService.instance
+        ?: return "Screen control off hai. ROUT Settings > Screen control pe jakar accessibility service on karo."
+    if (svc.isSensitiveScreen()) return "Ye screen sensitive lag rahi hai, isliye kuch nahi dabaya."
+    if (svc.foregroundPackage() == context.packageName) return "Pehle Instagram ya YouTube kholo, phir 'like karo' bolo."
+    return if (svc.tapExact(listOf("like", "\u0932\u093e\u0907\u0915"), null, 1500)) "Like button dabaya. App mein check kar lena."
+    else "Like button nahi mila (ho sakta hai pehle se liked ho). Kuch aur nahi dabaya."
+}
+
+private suspend fun defaultStatusView(context: Context): String {
+    val svc = com.rout.aiassistant.service.RoutAccessibilityService.instance
+        ?: return "Screen control off hai. ROUT Settings > Screen control pe jakar accessibility service on karo."
+    val open = DeviceActions.openApp(context, "whatsapp")
+    if (!open.ok) return open.message
+    kotlinx.coroutines.delay(1800)
+    return svc.openMyStatus()
 }

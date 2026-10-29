@@ -60,7 +60,7 @@ object ScreenControl {
         Regex("^(?:type karo|screen par type karo) (.+)\$").find(t)?.let { return Intent.TypeText(it.groupValues[1].trim()) }
         Regex("^(?:wait for|intezaar karo|ruko jab tak) (.+?)(?: dikhe| aaye)?\$").find(t)?.let { return Intent.WaitFor(it.groupValues[1].trim()) }
         Regex("^swipe (left|right)\$").find(t)?.let { return Intent.Swipe(it.groupValues[1]) }
-        Regex("^(?:back dabao|back karo|piche jao|peeche jao|wapas jao|go back|back)\$").find(t)?.let { return Intent.Back }
+        Regex("^(?:back dabao|back karo|back jao|piche jao|peeche jao|wapas jao|go back|back)\$").find(t)?.let { return Intent.Back }
         Regex("^(?:home jao|home screen|home dabao|go home)\$").find(t)?.let { return Intent.Home }
         Regex("^(?:recents|recent apps|recent apps kholo|app switcher kholo|open recents)\$").find(t)?.let { return Intent.Recents }
         Regex("^(?:scroll )?(?:neeche|niche|down)(?: karo| scroll)?\$").find(t)?.let { return Intent.Scroll(true) }

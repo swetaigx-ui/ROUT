@@ -145,6 +145,88 @@ class RoutAccessibilityService : AccessibilityService() {
         finally { root.recycle() }
     }
 
+    /** Click a node whose text/description equals one of [labels] (exact, case-insensitive), optionally only inside [pkg]. Polls up to [timeoutMs]. Never on a sensitive screen. */
+    suspend fun tapExact(labels: List<String>, pkg: String?, timeoutMs: Long): Boolean {
+        val want = labels.map { it.trim().lowercase() }
+        val end = android.os.SystemClock.uptimeMillis() + timeoutMs
+        while (true) {
+            if (!isSensitiveScreen() && (pkg == null || foregroundPackage() == pkg)) {
+                val root = rootInActiveWindow
+                if (root != null) {
+                    try {
+                        val hit = findExact(root, want)
+                        if (hit != null) {
+                            var n: AccessibilityNodeInfo? = hit
+                            var ok = false
+                            var depth = 0
+                            while (n != null && depth < 4 && !ok) {
+                                if (n.isClickable && n.isEnabled) ok = n.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                                n = if (ok) null else n.parent
+                                depth++
+                            }
+                            return ok
+                        }
+                    } finally { root.recycle() }
+                }
+            }
+            if (android.os.SystemClock.uptimeMillis() >= end) return false
+            kotlinx.coroutines.delay(400)
+        }
+    }
+
+    private fun findExact(node: AccessibilityNodeInfo, want: List<String>): AccessibilityNodeInfo? {
+        val a = node.text?.toString()?.trim()?.lowercase()
+        val b = node.contentDescription?.toString()?.trim()?.lowercase()
+        if ((a != null && a in want) || (b != null && b in want)) return node
+        for (i in 0 until node.childCount) {
+            val c = node.getChild(i) ?: continue
+            val hit = findExact(c, want)
+            if (hit != null) return hit
+        }
+        return null
+    }
+
+    /** WhatsApp: open Updates/Status tab, then "My status". Only taps and views; never posts, never reads content out. */
+    suspend fun openMyStatus(): String {
+        if (!tapExact(listOf("updates", "status"), "com.whatsapp", 5000)) return "WhatsApp mein Updates/Status tab nahi mila. Kuch nahi dabaya."
+        kotlinx.coroutines.delay(900)
+        return if (tapNamedElement("my status")) "WhatsApp Updates mein 'My status' kholne ka tap diya. Play hua ya nahi, screen par dekh lena."
+        else "Updates tab khul gaya, par 'My status' nahi mila."
+    }
+
+    /** How many on-screen nodes carry this text/description (contains, case-insensitive). On-device only. */
+    fun countMatching(name: String): Int {
+        val root = rootInActiveWindow ?: return 0
+        val want = name.trim().lowercase()
+        if (want.isEmpty()) return 0
+        fun walk(n: AccessibilityNodeInfo): Int {
+            var c = 0
+            val label = ((n.text?.toString() ?: "") + " " + (n.contentDescription?.toString() ?: "")).lowercase()
+            if (label.contains(want) && (n.isClickable || n.isEditable || n.text != null)) c++
+            for (i in 0 until n.childCount) { val ch = n.getChild(i) ?: continue; try { c += walk(ch) } finally { ch.recycle() } }
+            return c
+        }
+        return try { walk(root) } finally { root.recycle() }
+    }
+
+    private fun withFocusedEditable(block: (AccessibilityNodeInfo) -> Boolean): Boolean {
+        if (!readableAndSafe()) return false
+        val root = rootInActiveWindow ?: return false
+        try {
+            val f = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+            return try { if (f.isPassword || !f.isEditable) false else block(f) } finally { f.recycle() }
+        } finally { root.recycle() }
+    }
+    fun clearFocused(): Boolean = withFocusedEditable { f ->
+        val b = android.os.Bundle(); b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "")
+        f.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b)
+    }
+    fun selectAllFocused(): Boolean = withFocusedEditable { f ->
+        val b = android.os.Bundle(); b.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+        b.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, f.text?.length ?: 0)
+        f.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, b)
+    }
+
     fun tapNamedElement(name: String): Boolean {
         if (isSensitiveScreen()) return false
         val root = rootInActiveWindow ?: return false
