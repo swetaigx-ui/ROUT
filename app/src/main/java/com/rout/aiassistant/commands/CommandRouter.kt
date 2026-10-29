@@ -1013,13 +1013,17 @@ class CommandRouter(
                 val down = Regex("down|neeche|niche|aage").containsMatchIn(t)
                 val up = Regex("up|upar|oopar|upar ki").containsMatchIn(t)
                 val left = Regex("left|bayan|baaye|baen").containsMatchIn(t)
-                val right = Regex("right|dayan|daaye|daen").containsMatchIn(t)
+                val right = Regex("right|daaye|dayan|daen").containsMatchIn(t)
+                fun swipeGuard(): String? =
+                    if (svc.isSensitiveScreen()) "Ye screen sensitive lag rahi hai (password, OTP ya payment). Main is screen ko na padhunga na is pe kuch karunga."
+                    else if (!svc.readableAndSafe()) ScreenControl.UNREADABLE
+                    else null
                 return when {
-                    t.contains("swipe") && left -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("left")) true to "Swipe left." else false to "Swipe nahi chala."
-                    t.contains("swipe") && right -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("right")) true to "Swipe right." else false to "Swipe nahi chala."
-                    t.contains("swipe") && up -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("up")) true to "Swipe up." else false to "Swipe nahi chala."
-                    t.contains("swipe") && down -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("down")) true to "Swipe down." else false to "Swipe nahi chala."
-                    t.contains("swipe") -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("down")) true to "Swipe down." else false to "Swipe nahi chala."
+                    t.contains("swipe") && left -> swipeGuard()?.let { false to it } ?: if (svc.swipe("left")) true to "Swipe left." else false to "Swipe nahi chala."
+                    t.contains("swipe") && right -> swipeGuard()?.let { false to it } ?: if (svc.swipe("right")) true to "Swipe right." else false to "Swipe nahi chala."
+                    t.contains("swipe") && up -> swipeGuard()?.let { false to it } ?: if (svc.swipe("up")) true to "Swipe up." else false to "Swipe nahi chala."
+                    t.contains("swipe") && down -> swipeGuard()?.let { false to it } ?: if (svc.swipe("down")) true to "Swipe down." else false to "Swipe nahi chala."
+                    t.contains("swipe") -> swipeGuard()?.let { false to it } ?: if (svc.swipe("down")) true to "Swipe down." else false to "Swipe nahi chala."
                     up && !down -> if (svc.scroll(false)) true to "Scroll up." else false to "Is screen par kuch scroll nahi hua."
                     else -> if (svc.scroll(true)) true to "Scroll down." else false to "Is screen par kuch scroll nahi hua."
                 }
