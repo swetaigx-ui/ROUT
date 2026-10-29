@@ -54,7 +54,7 @@ class FilePickActivity : ComponentActivity() {
             FileOp.RENAME -> {
                 FileRules.invalidName(req.newName)?.let { return done(StepResult(false, it)) }
                 if (flags(uri) and DocumentsContract.Document.FLAG_SUPPORTS_RENAME == 0) return done(StepResult(false, "'$name' ko ye storage rename karne nahi deta."))
-                ask("Rename?", "'$name'  ->  '${req.newName.trim()}'", "Rename") {
+                ask("Rename?", renameMessage(name, req.newName.trim()), "Rename") {
                     try {
                         val n = DocumentsContract.renameDocument(contentResolver, uri, req.newName.trim())
                         done(if (n != null) StepResult(true, "'$name' ka naam '${req.newName.trim()}' ho gaya.", Verify.VERIFIED) else StepResult(false, "Rename nahi hua."))
@@ -63,7 +63,7 @@ class FilePickActivity : ComponentActivity() {
             }
             FileOp.DELETE -> {
                 if (flags(uri) and DocumentsContract.Document.FLAG_SUPPORTS_DELETE == 0) return done(StepResult(false, "'$name' ko ye storage delete karne nahi deta."))
-                ask("Permanently delete?", "'$name'\n\nYe wapas nahi aayegi.", "Delete") {
+                ask("Permanently delete?", deleteMessage(name), "Delete") {
                     try {
                         val ok = DocumentsContract.deleteDocument(contentResolver, uri)
                         done(if (ok) StepResult(true, "'$name' delete ho gayi.", Verify.VERIFIED) else StepResult(false, "Delete nahi hua."))
@@ -74,10 +74,18 @@ class FilePickActivity : ComponentActivity() {
     }
 
     private fun ask(title: String, msg: String, yes: String, onYes: () -> Unit) {
-        AlertDialog.Builder(this).setTitle(title).setMessage(msg).setCancelable(true)
-            .setPositiveButton(yes) { _, _ -> onYes() }
-            .setNegativeButton("Cancel") { _, _ -> done(StepResult(false, "Cancel kiya, kuch nahi badla.")) }
-            .setOnCancelListener { done(StepResult(false, "Cancel kiya, kuch nahi badla.")) }.show()
+        confirmDialog(this, title, msg, yes, onYes) { done(StepResult(false, "Cancel kiya, kuch nahi badla.")) }
+    }
+
+    companion object {
+        /** The real rename/delete confirmation dialog (also used by the render test). */
+        fun confirmDialog(ctx: android.content.Context, title: String, msg: String, yes: String, onYes: () -> Unit, onCancel: () -> Unit): AlertDialog =
+            AlertDialog.Builder(ctx).setTitle(title).setMessage(msg).setCancelable(true)
+                .setPositiveButton(yes) { _, _ -> onYes() }
+                .setNegativeButton("Cancel") { _, _ -> onCancel() }
+                .setOnCancelListener { onCancel() }.show()
+        fun deleteMessage(name: String) = "'$name'\n\nYe wapas nahi aayegi."
+        fun renameMessage(old: String, new: String) = "'$old'  ->  '$new'"
     }
 
     private fun done(r: StepResult) {

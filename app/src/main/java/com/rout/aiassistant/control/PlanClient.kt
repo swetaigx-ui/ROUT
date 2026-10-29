@@ -23,6 +23,8 @@ object PlanClient {
             when {
                 code == 404 -> Result.Failure("Backend mein plan endpoint abhi deploy nahi hua (404). Kuch nahi chala.")
                 code == 401 -> Result.Failure("Backend ne device ko authorize nahi kiya (401).")
+                code == 502 && text.contains("\"upstream_status\":429") -> Result.Failure("AI plan service abhi busy hai (quota limit). Local commands chalte rahenge; thodi der baad dobara bolo. Kuch nahi chala.")
+                code == 502 -> Result.Failure("AI plan service ne jawab nahi diya. Kuch nahi chala.")
                 code == 422 -> Result.Failure("Is command ka valid plan nahi bana.")
                 code !in 200..299 -> Result.Failure("Backend error HTTP $code.")
                 else -> when (val v = PlanValidator.parse(text, requestId)) {

@@ -541,7 +541,10 @@ async function handlePlan(request, env) {
       }),
       signal: AbortSignal.timeout(20000)
     });
-  if (!upstream.ok) return json({ error: 'upstream_error' }, 502);
+  if (!upstream.ok) {
+    let why = ''; try { const e = await upstream.json(); why = String((e.error && (e.error.status || e.error.message)) || '').slice(0, 120); } catch (_) {}
+    return json({ error: 'upstream_error', upstream_status: upstream.status, upstream_reason: why }, 502);
+  }
   const data = await upstream.json().catch(() => ({}));
   const text = ((((data.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('');
   let raw = null; try { raw = JSON.parse(text); } catch (_) { raw = null; }

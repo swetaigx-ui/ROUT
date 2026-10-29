@@ -295,6 +295,17 @@ class CommandRouter(
         }
     }
     companion object {
+        /** Exact known routine names only: the spoken name, optionally wrapped in filler words (routine/chalao/run/start/karo/ka), must equal a saved trigger. No fuzzy guessing. */
+        fun matchRoutine(spoken: String, known: List<String>): String? {
+            fun clean(x: String) = x.lowercase().replace(Regex("[^\\p{L}\\p{N} ]"), " ").split(Regex("\\s+")).filter { it.isNotEmpty() }
+            val filler = setOf("routine", "chalao", "chala", "run", "start", "karo", "kar", "ka", "ko", "the", "my", "mera", "meri", "workflow")
+            val w = clean(spoken)
+            known.firstOrNull { clean(it) == w }?.let { return it }
+            val core = w.filter { it !in filler }
+            if (core.isEmpty()) return null
+            val hits = known.filter { clean(it).filter { t -> t !in filler } == core }
+            return hits.singleOrNull()
+        }
         const val IMAGE_CONFIRM_TTL_MS = 90_000L
         const val NOTIF_REPLY_OFF = "Kisi ki notification ko seedha reply karna abhi band hai (bana hi nahi hai), isliye maine kuch nahi bheja. Message bhejna ho to bolo: 'Rohan ko WhatsApp karo ...' - naam, number aur words dikha kar confirm puchhunga."
     }
@@ -1256,8 +1267,8 @@ class CommandRouter(
     /** Runs an existing saved routine by its exact trigger name (used by the control engine). Same halting-at-first-confirmation path. */
     suspend fun runSavedRoutine(name: String): Pair<Boolean, String> {
         if (inRoutine) return false to "Routine ke andar routine nahi chalta."
-        val n = name.trim().lowercase()
-        val r = db.routines().enabled().firstOrNull { it.trigger.trim().lowercase() == n }
+        val all = db.routines().enabled()
+        val r = matchRoutine(name, all.map { it.trigger })?.let { hit -> all.first { it.trigger == hit } }
             ?: return false to "'$name' naam ka saved routine nahi mila."
         halted = false
         val (_, msg) = runRoutine(r)
@@ -1266,6 +1277,8 @@ class CommandRouter(
     }
 
     @Volatile private var halted = false
+
+
 
     private suspend fun runRoutine(r: Routine): Pair<Boolean, String> {
         inRoutine = true
