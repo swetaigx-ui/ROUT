@@ -1,4 +1,4 @@
-# ROUT 0.7.29 - voice fix and device control engine
+# ROUT 0.7.30 - voice fix and device control engine
 
 Status: unit-tested only. Never run on a phone. Accessibility effects (taps, WhatsApp Send tap, scroll, like) are unverified on a real device.
 
@@ -29,8 +29,13 @@ Settings > Accessibility > ROUT > enable. Needed for tap/scroll/like/status acti
 - Devanagari contact names are romanised only to look up Latin-saved contacts; several hits stay ambiguous and sends still show name + number.
 - Backend /v1/control/plan is DEPLOYED (Cloudflare Worker rout-backend); 0.7.29 worker spec adds the two actions above.
 
-## Not done
-- file.open / file.rename / file.delete: not implemented yet. Deletion/rename of files owned by other apps needs an Activity-hosted system consent dialog (MediaStore.createDeleteRequest / SAF picker); non-media documents are not searchable by name without a user-picked grant (Android restriction).
+## Added in 0.7.30
+- file.open / file.rename / file.delete via an Activity-hosted system file picker (FilePickActivity): the USER picks the file; rename/delete then show the real file name in a dialog and act only on Yes (plus the engine confirmation). Works only where the storage provider supports rename/delete; closing the picker or dialog cancels with nothing changed. ROUT never searches storage on its own. Background launch can be blocked by Android; then the step fails honestly. Unit-tested with a fake launcher; the real picker/dialog is unverified on a phone.
+- workflow.execute: a routine halted at a confirmation now reports NOT complete (waiting step and later steps did not run); the engine halts remaining plan steps.
+- call.end message no longer sends the user to a non-existent permission screen.
+
+## Not done (old note, superseded above)
+- (file ops now implemented, see above) previously: file.open / file.rename / file.delete: not implemented yet. Deletion/rename of files owned by other apps needs an Activity-hosted system consent dialog (MediaStore.createDeleteRequest / SAF picker); non-media documents are not searchable by name without a user-picked grant (Android restriction).
 - call.end needs ANSWER_PHONE_CALLS grant flow
 - Cloud screen transfer, notification reply, background mic and wake word stay OFF (no grant)
 

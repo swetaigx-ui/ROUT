@@ -37,8 +37,7 @@ class ControlEngineTest {
     @Test fun rejectsUnknownMalformedAndUnsupported() {
         assertTrue(invalid("not json").isNotEmpty())
         assertTrue(invalid(plan("r1", act("shell.exec", "rm -rf /"))).contains("registered nahi"))
-        assertTrue(invalid(plan("r2", act("file.delete", "/sdcard/a"))).contains("supported nahi"))
-        assertTrue(invalid(plan("r3", act("file.rename", "/a", """{"text":"b"}"""))).contains("supported nahi"))
+        assertTrue(invalid(plan("r2", act("file.format", "/sdcard"))).contains("registered nahi"))
         assertTrue(invalid("""{"requestId":"r4","actions":[{"type":"screen.home","code":"x"}]}""").contains("unknown field"))
         assertTrue(invalid("""{"requestId":"r5","actions":[{"type":"screen.home"}],"extra":1}""").contains("Unknown field"))
         assertTrue(invalid("""{"requestId":"bad id!","actions":[{"type":"screen.home"}]}""").contains("requestId"))
@@ -68,7 +67,7 @@ class ControlEngineTest {
         assertEquals(Risk.HIGH, ActionRegistry.effectiveRisk(valid(plan("g", act("ui.tap", params = """{"text":"Like"}"""))).actions[0]))
         assertEquals(Risk.HIGH, ActionRegistry.effectiveRisk(valid(plan("h", act("call.end"))).actions[0]))
         assertEquals(Risk.LOW, ActionRegistry.effectiveRisk(valid(plan("f", act("device.flashlight_on"))).actions[0]))
-        assertTrue(ActionRegistry.unsupportedTypes.containsAll(listOf("file.delete", "file.rename", "file.open")))
+        assertTrue(ActionRegistry.unsupportedTypes.containsAll(listOf<String>()))
     }
 
     @Test fun runsOneAtATimeAndReportsHonestly() = runBlocking {
@@ -170,6 +169,43 @@ class ControlEngineTest {
         // unknown app and missing access
         assertFalse(ex.execute(valid(plan("d4", act("notification.dismiss_app", "tiktok"))).actions[0]).ok)
         assertFalse(exec(notes = null).execute(one).ok)
+    }
+
+    @Test fun fileOpsGoThroughPickerBridgeAndNeedConfirmation() = runBlocking {
+        val seen = ArrayList<com.rout.aiassistant.files.FileRequest>()
+        val ex = AndroidExecutor(androidx.test.core.app.ApplicationProvider.getApplicationContext(), svc = { null }, contactRows = { emptyList() },
+            fileRunner = { seen.add(it); StepResult(false, "File chuni nahi gayi, kuch nahi kiya.") })
+        val del = valid(plan("f1", act("file.delete", "report.pdf"))).actions[0]
+        val ren = valid(plan("f2", act("file.rename", "a.txt", """{"text":"b.txt"}"""))).actions[0]
+        val opn = valid(plan("f3", act("file.open", "a.txt"))).actions[0]
+        assertEquals(Risk.HIGH, ActionRegistry.effectiveRisk(del)); assertEquals(Risk.HIGH, ActionRegistry.effectiveRisk(ren)); assertEquals(Risk.LOW, ActionRegistry.effectiveRisk(opn))
+        assertTrue(ex.describe(del).contains("asli naam"))
+        assertFalse(ex.execute(del).ok); ex.execute(ren); ex.execute(opn)
+        assertEquals(listOf(com.rout.aiassistant.files.FileOp.DELETE, com.rout.aiassistant.files.FileOp.RENAME, com.rout.aiassistant.files.FileOp.OPEN), seen.map { it.op })
+        assertEquals("b.txt", seen[1].newName)
+    }
+
+    @Test fun fileBridgeHonestWhenNoAnswerOrLaunchFails() = runBlocking {
+        val fb = com.rout.aiassistant.files.FileBridge
+        val r = com.rout.aiassistant.files.FileRequest(com.rout.aiassistant.files.FileOp.DELETE, "x", "")
+        assertFalse(fb.run(r) { throw IllegalStateException("blocked") }.ok)
+        assertNull(fb.pending)
+        fb.timeoutMs = 200
+        val t = fb.run(r) { }
+        assertFalse(t.ok); assertTrue(t.message.contains("kuch nahi"))
+        // answered by the Activity
+        fb.timeoutMs = 5000
+        val j = async { fb.run(r) { } }
+        while (fb.pending == null) delay(10)
+        fb.pending!!.complete(StepResult(true, "ok")); assertTrue(j.await().ok)
+        assertNull(fb.pending)
+    }
+
+    @Test fun fileNameRules() {
+        val f = com.rout.aiassistant.files.FileRules
+        assertNull(f.invalidName("notes 2.txt"))
+        assertNotNull(f.invalidName("")); assertNotNull(f.invalidName("a/b")); assertNotNull(f.invalidName(".."))
+        assertNotNull(f.invalidName("x".repeat(121)))
     }
 
     @Test fun workflowExecuteRunsExistingRoutineOnly() = runBlocking {

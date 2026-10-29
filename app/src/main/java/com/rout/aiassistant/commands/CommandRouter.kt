@@ -1259,8 +1259,13 @@ class CommandRouter(
         val n = name.trim().lowercase()
         val r = db.routines().enabled().firstOrNull { it.trigger.trim().lowercase() == n }
             ?: return false to "'$name' naam ka saved routine nahi mila."
-        return runRoutine(r)
+        halted = false
+        val (_, msg) = runRoutine(r)
+        // A routine halted at a confirmation is NOT complete: the waiting step and every later step have not run.
+        return if (halted) false to (msg + " Routine poora nahi hua - confirmation ka intezaar hai, baaki steps tab tak nahi chale.") else true to msg
     }
+
+    @Volatile private var halted = false
 
     private suspend fun runRoutine(r: Routine): Pair<Boolean, String> {
         inRoutine = true
@@ -1271,6 +1276,7 @@ class CommandRouter(
                 val before = confirmRequests
                 out.add(singleStep(step).second)
                 if (confirmRequests > before) {
+                    halted = true
                     // A step needs the user's yes/no. Nothing after it runs; the routine never approves for the user.
                     if (i < steps.size - 1) out.add("Routine yahin ruki: is step ki haan/nahi ke baad baaki ${steps.size - 1 - i} step nahi chalenge.")
                     break

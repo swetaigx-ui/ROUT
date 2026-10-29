@@ -48,6 +48,11 @@
         android:theme="@style/Theme.ROUT.Splash">
 
         <activity
+            android:name=".files.FilePickActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"

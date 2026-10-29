@@ -14,6 +14,7 @@ class AndroidExecutor(
     private val svc: () -> RoutAccessibilityService? = { RoutAccessibilityService.instance },
     private val contactRows: (String) -> List<ContactResolver.Row> = { DeviceActions.queryContacts(context, it) },
     private val onCancelRequested: () -> Unit = {},
+    private val fileRunner: suspend (com.rout.aiassistant.files.FileRequest) -> StepResult = { com.rout.aiassistant.files.FileBridge.run(it, com.rout.aiassistant.files.FileBridge.launcher(context)) },
     private val routineRunner: (suspend (String) -> Pair<Boolean, String>)? = null,
     private val appNotifications: () -> Map<String, Pair<String, List<String>>>? = { com.rout.aiassistant.service.RoutMediaListenerService.instance?.clearableByApp() },
     private val dismissKeys: (List<String>) -> Unit = { com.rout.aiassistant.service.RoutMediaListenerService.instance?.dismissKeys(it) }
@@ -36,6 +37,7 @@ class AndroidExecutor(
         "call.end" -> "Chalu call khatam karun?"
         "notification.dismiss" -> "SAARE dismiss hone wale notifications saaf karun? (sab ek saath)"
         "notification.dismiss_app" -> appMatch(a.arg("target")).let { (m, e) -> if (m != null) "${m.first} ke ${m.second.size} notifications saaf karun?" else (e ?: "App nahi mila") }
+        "file.open", "file.rename", "file.delete" -> "File picker khulega - file tum chunoge${if (a.type == "file.rename") "; naya naam '${a.arg("text")}'" else ""}. ${if (a.type == "file.delete") "Delete se pehle asli naam dikhakar poochhungi." else if (a.type == "file.rename") "Rename se pehle asli naam dikhakar poochhungi." else ""}"
         "workflow.execute" -> "Saved routine '${a.arg("target")}' chalau? (har step ki apni confirmation aayegi)"
         "call.initiate" -> contact(a.arg("target")).let { (c, e) -> if (c != null) "Call: ${c.name} (${c.number})" else (e ?: "Contact nahi mila") }
         "ui.tap", "ui.long_press" -> "Screen par '${a.arg("text")}' dabana hai"
@@ -112,6 +114,9 @@ class AndroidExecutor(
             "notification.dismiss" -> { val l = com.rout.aiassistant.service.RoutMediaListenerService.instance
                 if (l == null) fail("Notification access on nahi hai, isliye kuch saaf nahi kiya.") else { l.cancelAllNotifications(); StepResult(true, "Dismiss hone wale notifications saaf karne ka command diya (padhe nahi).") } }
             "notification.dismiss_app" -> appMatch(a.arg("target")).let { (m, e) -> if (m == null) fail(e ?: "App nahi mila.") else { dismissKeys(m.second); StepResult(true, "${m.first} ke ${m.second.size} notifications saaf karne ka command diya.") } }
+            "file.open" -> fileRunner(com.rout.aiassistant.files.FileRequest(com.rout.aiassistant.files.FileOp.OPEN, a.arg("target"), ""))
+            "file.rename" -> fileRunner(com.rout.aiassistant.files.FileRequest(com.rout.aiassistant.files.FileOp.RENAME, a.arg("target"), a.arg("text")))
+            "file.delete" -> fileRunner(com.rout.aiassistant.files.FileRequest(com.rout.aiassistant.files.FileOp.DELETE, a.arg("target"), ""))
             "workflow.execute" -> { val r = routineRunner; if (r == null) fail("Routines abhi available nahi.") else { val (ok, msg) = r(a.arg("target")); StepResult(ok, msg) } }
             "automation.cancel" -> { onCancelRequested(); StepResult(true, "Automation rokne ka command diya.", Verify.VERIFIED) }
             else -> fail("'${a.type}' supported nahi hai.")
@@ -122,7 +127,7 @@ class AndroidExecutor(
     private fun endCall(): StepResult {
         if (android.os.Build.VERSION.SDK_INT < 28) return fail("Is Android version par call end nahi ho sakta (Android 9+ chahiye).")
         if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ANSWER_PHONE_CALLS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
-            return fail("Call end karne ke liye 'Phone calls answer/manage' permission chahiye - abhi nahi hai, kuch nahi kiya.")
+            return fail("Call end abhi available nahi: ROUT ke paas 'phone calls manage' permission nahi hai aur ye option abhi on nahi hai. Call khud kaat do, kuch nahi kiya.")
         val tm = context.getSystemService(android.telecom.TelecomManager::class.java)
         return try { if (tm.endCall()) StepResult(true, "Chalu call end karne ka command diya.") else fail("Koi chalu call nahi mili ya end nahi hui.") }
         catch (e: SecurityException) { fail("Android ne call end karne se roka (permission).") }

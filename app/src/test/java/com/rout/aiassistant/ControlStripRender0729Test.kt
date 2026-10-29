@@ -101,7 +101,7 @@ class ControlStripRender0729Test {
         shot(name)
     }
 
-    @Test fun fullHomeWithStripAndDockFailed() = homeWith({ e -> e.planning("r9"); e.planningFailed("Phone-calls permission nahi mili, call khatam nahi ho paayi. Settings mein jakar permission do.") }, "home_strip_dock_failed_0729")
+    @Test fun fullHomeWithStripAndDockFailed() = homeWith({ e -> e.planning("r9"); e.planningFailed("Call end abhi available nahi: permission nahi hai aur ye option abhi on nahi hai. Call khud kaat do, kuch nahi kiya.") }, "home_strip_dock_failed_0729")
 
     @Test fun fullHomeIdleHasNoStrip() {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
