@@ -162,7 +162,7 @@ class MainActivity : ComponentActivity() {
         if (!ok) return
         lifecycleScope.launch {
             var waited = 0
-            while (waited < 6000) {
+            while (waited < 15000) {
                 val st = com.rout.aiassistant.RoutApplication.live.state.value
                 if (st == "live") { moveTaskToBack(true); return@launch }
                 if (st == "failed" || st == "off" && waited > 1500) return@launch

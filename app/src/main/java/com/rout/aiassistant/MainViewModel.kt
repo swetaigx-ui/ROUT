@@ -334,7 +334,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             onPermissionNeeded = { cmd -> pendingAfterPermission = cmd },
             visionImages = { visionDoc?.images ?: emptyList() },
             onClearVision = { visionDoc = null },
-            controlPlanner = { text -> controlPlan(text) }
+            controlPlanner = { text -> controlPlan(text) },
+            newsBackend = { q ->
+                if (isDeviceEnrolled()) com.rout.aiassistant.commands.NewsClient.fetch(backendUrl.value, enrollment.deviceToken, q)
+                else com.rout.aiassistant.commands.NewsClient.Result.Failure("Backend enroll nahi hai.")
+            }
         )
         engine.initTts()
         // LIVE voice turns: a completed user utterance runs clear device commands

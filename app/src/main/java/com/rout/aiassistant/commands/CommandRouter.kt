@@ -155,6 +155,7 @@ class CommandRouter(
     private val onClearVision: () -> Unit = {},
     /** Seams so tests can prove the send/call confirmation boundary without real contacts or sends. */
     private val contactRows: (Context, String) -> List<ContactResolver.Row> = { c, n -> DeviceActions.queryContacts(c, n) },
+    private val newsBackend: (suspend (String) -> NewsClient.Result)? = null,
     private val emailRows: (Context, String) -> List<ContactResolver.Row> = { c, n -> DeviceActions.queryEmails(c, n) },
     private val whatsappSender: (Context, String, String) -> String = { c, num, body -> DeviceActions.whatsappMessage(c, num, body).message },
     private val whatsappCaller: (Context, Long, String, Boolean) -> String = { c, id, num, v -> DeviceActions.whatsappCall(c, id, num, v).message },
@@ -746,6 +747,18 @@ class CommandRouter(
 
                 // --- News briefing (public RSS, honest on availability) ---
         if (QuickAnswers.isNewsQ(t)) {
+            // Query-aware answer from the backend (grounded search when the free
+            // quota allows, RSS headlines otherwise - the mode is never hidden),
+            // with the on-device RSS feed as offline fallback.
+            if (newsBackend != null) {
+                when (val r = newsBackend.invoke(raw.take(400))) {
+                    is NewsClient.Result.Answer -> {
+                        val tag = if (r.mode == "rss-headlines") " (headlines se)" else ""
+                        return true to (r.text + tag)
+                    }
+                    is NewsClient.Result.Failure -> { /* fall through to on-device feed */ }
+                }
+            }
             val hindi = Regex("(hindi|hindi mein)").containsMatchIn(t) || raw.any { it in '\u0900'..'\u097F' }
             val items = NewsService.headlines(hindi)
             return if (items.isEmpty()) false to "News feed abhi nahi mil raha. Net check karke dobara try karo."

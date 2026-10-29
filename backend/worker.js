@@ -561,6 +561,96 @@ async function handlePlan(request, env) {
   return json(plan);
 }
 
+
+/**
+ * /v1/news - answers ONE current-news query with Google Search grounding via REST generateContent.
+ * Only the query text is sent upstream. Sources are returned so the app can speak attribution.
+ * If grounding yields nothing, the app falls back to its honest "news unavailable" line.
+ */
+async function handleNews(request, env) {
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body.query !== 'string' || !body.query.trim()) return json({ error: 'invalid_request' }, 400);
+  if (await env.ROUT_KV.get('news_grounding_blocked')) return await handleNewsRss(body, env);
+  const model = env.GEMINI_NEWS_MODEL || 'gemini-3.6-flash';
+  const upstream = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: body.query.slice(0, 500) }] }],
+        systemInstruction: { parts: [{ text: "You are the current-news module of an Android voice assistant named ROUT. Answer the user's news question in the SAME language they asked (Hindi, Hinglish or English), 2-4 short spoken-style sentences, using ONLY the grounding search results. Name sources inline (e.g. 'NDTV ke mutabik'). Never invent news, dates, numbers or quotes. If search returns nothing relevant, honestly say current news is unavailable right now." }] },
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 500 }
+      })
+    }
+  );
+  const data = await upstream.json().catch(() => null);
+  if (upstream.status === 429) await env.ROUT_KV.put('news_grounding_blocked', '1', { expirationTtl: 43200 });
+  if (upstream.ok) {
+    const cand = data && data.candidates && data.candidates[0];
+    const answer = cand && cand.content && cand.content.parts ? cand.content.parts.map(p => p.text || '').join('').trim() : '';
+    const gm = cand && cand.groundingMetadata;
+    const sources = gm && Array.isArray(gm.groundingChunks) ? gm.groundingChunks.map(c => c && c.web && c.web.title ? { title: String(c.web.title).slice(0, 120), uri: String(c.web.uri || '').slice(0, 300) } : null).filter(Boolean).slice(0, 5) : [];
+    const searches = gm && Array.isArray(gm.webSearchQueries) ? gm.webSearchQueries.slice(0, 5) : [];
+    if (answer) return json({ answer: answer.slice(0, 1500), sources, searches, mode: 'grounded' });
+  }
+  // Fallback: Google News RSS headlines (free, keyless) summarized by the plain model.
+  // This is RSS-headline news, not full web search - callers must not present it as grounded search.
+  return await handleNewsRss(body, env);
+}
+
+async function handleNewsRss(body, env) {
+  const q = body.query.slice(0, 200);
+  const hindi = /[\u0900-\u097F]/.test(q) || /kya|hai|aaj|news|samachar|batao/i.test(q);
+  const ua = { headers: { 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' } };
+  const feedUrls = [
+    'https://www.bing.com/news/search?q=' + encodeURIComponent(q) + '&format=rss',
+    'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + (hindi ? '&hl=hi&gl=IN&ceid=IN:hi' : '&hl=en-IN&gl=IN&ceid=IN:en'),
+    'https://feeds.feedburner.com/ndtvnews-top-stories',
+    'https://timesofindia.indiatimes.com/rssfeedstopstories.cms'
+  ];
+  let xml = null, lastStatus = 0;
+  for (const u of feedUrls) {
+    try {
+      const resp = await fetch(u, ua);
+      lastStatus = resp.status;
+      if (resp.ok) { xml = await resp.text(); if (xml && xml.indexOf('<item>') !== -1) break; xml = null; }
+    } catch (e) { lastStatus = 0; }
+  }
+  if (!xml) return json({ error: 'rss_unavailable', status: lastStatus }, 502);
+  const items = [];
+  const itemRe = /<item>([\s\S]*?)<\/item>/g;
+  let m;
+  while ((m = itemRe.exec(xml)) !== null && items.length < 6) {
+    const it = m[1];
+    const title = (it.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '';
+    const link = (it.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || '';
+    const pubDate = (it.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1] || '';
+    const source = (it.match(/<source[^>]*>([\s\S]*?)<\/source>/) || [])[1] || '';
+    const clean = s => s.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+    if (clean(title)) items.push({ title: clean(title).slice(0, 200), source: clean(source).slice(0, 80), uri: clean(link).slice(0, 300), pubDate: clean(pubDate) });
+  }
+  if (!items.length) return json({ error: 'no_headlines' }, 502);
+  const model = env.GEMINI_MODEL || 'gemini-3.6-flash';
+  const list = items.map((it, i) => (i + 1) + '. [' + it.source + '] ' + it.title + ' (' + it.pubDate + ')').join('\n');
+  const sum = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: 'User news query: <query>' + q + '</query>\nLatest headlines from Google News RSS:\n' + list }] }],
+      systemInstruction: { parts: [{ text: "You are the current-news module of an Android voice assistant named ROUT. Using ONLY the provided headlines, answer the user's query in the SAME language they asked (Hindi, Hinglish or English), 2-4 short spoken-style sentences. Name the source inline (e.g. 'NDTV ke mutabik'). Never invent facts beyond the headlines. If no headline is relevant, honestly say current news on this topic is unavailable right now." }] },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 400 }
+    })
+  });
+  const sd = await sum.json().catch(() => null);
+  if (!sum.ok) return json({ error: 'upstream_error', status: sum.status, detail: (sd && sd.error && sd.error.message || '').slice(0, 300) }, 502);
+  const sc = sd && sd.candidates && sd.candidates[0];
+  const answer = sc && sc.content && sc.content.parts ? sc.content.parts.map(p => p.text || '').join('').trim() : '';
+  if (!answer) return json({ error: 'no_answer' }, 502);
+  return json({ answer: answer.slice(0, 1500), sources: items.map(it => ({ title: it.title, uri: it.uri })), searches: [], mode: 'rss-headlines' });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -616,6 +706,14 @@ export default {
           return json({ error: 'rate_limited' }, 429);
         }
         return await handleSpeak(request, env);
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/news') {
+        if (!env.GEMINI_API_KEY) return json({ error: 'ai_not_configured' }, 503);
+        const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+        if (!(await deviceValid(env, token))) return json({ error: 'unauthorized' }, 401);
+        const limit = parseInt(env.RATE_LIMIT_PER_MINUTE || '30', 10);
+        if (await rateLimited(env.ROUT_KV, 'news:' + await sha256(token), limit)) return json({ error: 'rate_limited' }, 429);
+        return await handleNews(request, env);
       }
       return json({ error: 'not_found' }, 404);
     } catch (e) {
