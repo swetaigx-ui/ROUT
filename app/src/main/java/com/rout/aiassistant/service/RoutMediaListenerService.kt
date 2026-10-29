@@ -17,6 +17,19 @@ class RoutMediaListenerService : NotificationListenerService() {
     override fun onListenerConnected() { instance = this }
     override fun onDestroy() { if (instance === this) instance = null }
 
+    /** Dismissible notifications grouped by app: package -> (app label, keys). Labels only; no content is read. */
+    fun clearableByApp(): Map<String, Pair<String, List<String>>> {
+        val pm = packageManager
+        val m = LinkedHashMap<String, Pair<String, MutableList<String>>>()
+        activeNotifications?.filter { it.isClearable }?.forEach { sbn ->
+            val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(sbn.packageName, 0)).toString() }.getOrDefault(sbn.packageName)
+            m.getOrPut(sbn.packageName) { label to ArrayList() }.second.add(sbn.key)
+        }
+        return m
+    }
+
+    fun dismissKeys(keys: List<String>) { keys.forEach { runCatching { cancelNotification(it) } } }
+
     /** Recent visible notifications as "App: title - text" lines, newest first. */
     fun recentSummaries(limit: Int = 5): List<String> {
         val pm = packageManager

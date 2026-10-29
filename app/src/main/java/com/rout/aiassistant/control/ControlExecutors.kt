@@ -13,7 +13,10 @@ class AndroidExecutor(
     private val context: Context,
     private val svc: () -> RoutAccessibilityService? = { RoutAccessibilityService.instance },
     private val contactRows: (String) -> List<ContactResolver.Row> = { DeviceActions.queryContacts(context, it) },
-    private val onCancelRequested: () -> Unit = {}
+    private val onCancelRequested: () -> Unit = {},
+    private val routineRunner: (suspend (String) -> Pair<Boolean, String>)? = null,
+    private val appNotifications: () -> Map<String, Pair<String, List<String>>>? = { com.rout.aiassistant.service.RoutMediaListenerService.instance?.clearableByApp() },
+    private val dismissKeys: (List<String>) -> Unit = { com.rout.aiassistant.service.RoutMediaListenerService.instance?.dismissKeys(it) }
 ) : ActionExecutor {
     private var fgBefore: String? = null
     private var fpBefore: Int? = null
@@ -32,9 +35,24 @@ class AndroidExecutor(
         "message.send" -> contact(a.arg("target")).let { (c, e) -> if (c != null) "WhatsApp ${c.name} (${c.number}): \"${a.arg("text")}\"" else (e ?: "Contact nahi mila") }
         "call.end" -> "Chalu call khatam karun?"
         "notification.dismiss" -> "SAARE dismiss hone wale notifications saaf karun? (sab ek saath)"
+        "notification.dismiss_app" -> appMatch(a.arg("target")).let { (m, e) -> if (m != null) "${m.first} ke ${m.second.size} notifications saaf karun?" else (e ?: "App nahi mila") }
+        "workflow.execute" -> "Saved routine '${a.arg("target")}' chalau? (har step ki apni confirmation aayegi)"
         "call.initiate" -> contact(a.arg("target")).let { (c, e) -> if (c != null) "Call: ${c.name} (${c.number})" else (e ?: "Contact nahi mila") }
         "ui.tap", "ui.long_press" -> "Screen par '${a.arg("text")}' dabana hai"
         else -> a.type + " " + a.args.values.joinToString(" ")
+    }
+
+    /** Unique app (by label) among dismissible notifications, else an honest error. */
+    private fun appMatch(name: String): Pair<Pair<String, List<String>>?, String?> {
+        val all = appNotifications() ?: return null to "Notification access on nahi hai, isliye kuch saaf nahi kiya."
+        val q = name.trim().lowercase()
+        val hits = all.values.filter { it.first.lowercase() == q }.ifEmpty { all.values.filter { it.first.lowercase().contains(q) } }
+        return when {
+            q.isEmpty() -> null to "App ka naam chahiye."
+            hits.isEmpty() -> null to "\"$name\" ka koi dismiss hone wala notification nahi mila."
+            hits.size > 1 -> null to "\"$name\" ke naam se ${hits.size} apps mile (${hits.joinToString(", ") { it.first }}) - kaunsa wala, batao."
+            else -> hits[0] to null
+        }
     }
 
     private fun fingerprint(): Int? = svc()?.screenTextOnDevice()?.hashCode()
@@ -93,6 +111,8 @@ class AndroidExecutor(
             "call.end" -> endCall()
             "notification.dismiss" -> { val l = com.rout.aiassistant.service.RoutMediaListenerService.instance
                 if (l == null) fail("Notification access on nahi hai, isliye kuch saaf nahi kiya.") else { l.cancelAllNotifications(); StepResult(true, "Dismiss hone wale notifications saaf karne ka command diya (padhe nahi).") } }
+            "notification.dismiss_app" -> appMatch(a.arg("target")).let { (m, e) -> if (m == null) fail(e ?: "App nahi mila.") else { dismissKeys(m.second); StepResult(true, "${m.first} ke ${m.second.size} notifications saaf karne ka command diya.") } }
+            "workflow.execute" -> { val r = routineRunner; if (r == null) fail("Routines abhi available nahi.") else { val (ok, msg) = r(a.arg("target")); StepResult(ok, msg) } }
             "automation.cancel" -> { onCancelRequested(); StepResult(true, "Automation rokne ka command diya.", Verify.VERIFIED) }
             else -> fail("'${a.type}' supported nahi hai.")
         }

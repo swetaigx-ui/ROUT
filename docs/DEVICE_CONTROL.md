@@ -1,4 +1,4 @@
-# ROUT 0.7.28 - voice fix and device control engine
+# ROUT 0.7.29 - voice fix and device control engine
 
 Status: unit-tested only. Never run on a phone. Accessibility effects (taps, WhatsApp Send tap, scroll, like) are unverified on a real device.
 
@@ -23,12 +23,15 @@ Added ANSWER_PHONE_CALLS (no runtime prompt yet; call.end fails honestly until t
 ## Accessibility setup
 Settings > Accessibility > ROUT > enable. Needed for tap/scroll/like/status actions.
 
+## Added in 0.7.29
+- workflow.execute: runs an EXISTING saved routine by exact name through the normal router (each send/call/like step still asks its own confirmation; routine halts at the first one).
+- notification.dismiss_app: dismisses dismissible notifications of ONE uniquely named app, after confirmation. Ambiguous names are refused.
+- Devanagari contact names are romanised only to look up Latin-saved contacts; several hits stay ambiguous and sends still show name + number.
+- Backend /v1/control/plan is DEPLOYED (Cloudflare Worker rout-backend); 0.7.29 worker spec adds the two actions above.
+
 ## Not done
-- file.open / file.rename / file.delete (feasible via SAF/MediaStore; not implemented)
-- workflow.execute (not implemented)
-- Dismissing a single named notification (only "all" with confirmation exists)
+- file.open / file.rename / file.delete: not implemented yet. Deletion/rename of files owned by other apps needs an Activity-hosted system consent dialog (MediaStore.createDeleteRequest / SAF picker); non-media documents are not searchable by name without a user-picked grant (Android restriction).
 - call.end needs ANSWER_PHONE_CALLS grant flow
-- Devanagari contact names are not transliterated to Latin contacts
 - Cloud screen transfer, notification reply, background mic and wake word stay OFF (no grant)
 
 ## Tests

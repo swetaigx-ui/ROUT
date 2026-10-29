@@ -220,12 +220,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Native device-control engine (plans from the backend, validated here; this app stays the authority) ----
     private val controlEngine: com.rout.aiassistant.control.ControlEngine by lazy {
         com.rout.aiassistant.control.ControlEngine(
-            com.rout.aiassistant.control.AndroidExecutor(app, onCancelRequested = { controlEngine.stop() }),
+            com.rout.aiassistant.control.AndroidExecutor(app, onCancelRequested = { controlEngine.stop() }, routineRunner = { n -> router.runSavedRoutine(n) }),
             confirm = { desc -> controlConfirm(desc) })
     }
     val controlSnapshot: StateFlow<com.rout.aiassistant.control.ControlSnapshot> get() = controlEngine.snapshot
     fun stopAutomation() { controlEngine.stop(); confirmSlot.clear(); engine.setState(AssistantState.IDLE) }
     fun dismissControl() = controlEngine.reset()
+    internal fun controlEngineForRender() = controlEngine
 
     /** One confirmation through the normal single pending slot. Declines on cancel, replacement, Stop or 90 s. */
     private suspend fun controlConfirm(desc: String): Boolean {

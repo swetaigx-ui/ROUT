@@ -370,6 +370,11 @@ private fun warbyStatusLabel(state: AssistantState, emotion: com.rout.aiassistan
 @Composable
 private fun ControlStrip(vm: MainViewModel) {
     val snap by vm.controlSnapshot.collectAsState()
+    ControlStripContent(snap, onStop = { vm.stopAutomation() }, onDismiss = { vm.dismissControl() })
+}
+
+@Composable
+internal fun ControlStripContent(snap: com.rout.aiassistant.control.ControlSnapshot, onStop: () -> Unit, onDismiss: () -> Unit) {
     if (snap.state == com.rout.aiassistant.control.ControlState.IDLE) return
     val active = snap.state in setOf(CS.PLANNING, CS.WAITING_FOR_CONFIRMATION, CS.EXECUTING, CS.VERIFYING)
     val label = when (snap.state) {
@@ -389,7 +394,7 @@ private fun ControlStrip(vm: MainViewModel) {
                     Text(label + if (snap.total > 0 && active) "  ${snap.step}/${snap.total}" else "", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     if (snap.message.isNotBlank()) Text(snap.message, color = Color(0xFFC9D2DE), fontSize = 13.sp, maxLines = 3)
                 }
-                Button(onClick = { if (active) vm.stopAutomation() else vm.dismissControl() },
+                Button(onClick = { if (active) onStop() else onDismiss() },
                     colors = ButtonDefaults.buttonColors(containerColor = if (active) Color(0xFFB3261E) else Color(0xFF2A2F3A), contentColor = Color.White)) {
                     Text(if (active) "STOP" else "OK")
                 }

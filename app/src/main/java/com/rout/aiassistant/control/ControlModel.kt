@@ -73,10 +73,11 @@ object ActionRegistry {
         ActionSpec("media.previous", s(), Risk.LOW, "notification_listener", "dispatched", true),
         ActionSpec("notification.open", s(), Risk.LOW, "accessibility", "dispatched", true, "Opens the notification shade. Does not read it."),
         ActionSpec("notification.dismiss", s(ParamSpec("scope", ParamType.ENUM, true, 4, setOf("all"))), Risk.HIGH, "notification_listener", "dispatched", true, "Bulk clear only: scope must be explicitly \"all\". Clears ALL dismissible notifications (needs notification access), confirmed first, never reads them. Dismissing one named notification is not implemented."),
+        ActionSpec("notification.dismiss_app", s(p("target", 60)), Risk.HIGH, "notification_listener", "dispatched", true, "Dismisses the dismissible notifications of ONE named app (unique match, else it asks). Confirmed first; never reads content."),
         ActionSpec("file.open", s(p("target", 300)), Risk.LOW, "storage_access_framework", "none", false, "Not implemented yet. Feasible, but needs an Activity-hosted picker/consent flow (not an Android ban)."),
         ActionSpec("file.rename", s(p("target", 300), p("text", 120)), Risk.HIGH, "storage_access_framework", "none", false, "Not implemented yet. Feasible only through an Activity-hosted system consent dialog (MediaStore/SAF); confirmed first."),
         ActionSpec("file.delete", s(p("target", 300)), Risk.HIGH, "storage_access_framework", "none", false, "Not implemented yet. Feasible only through an Activity-hosted system consent dialog (MediaStore/SAF); stays off until that confirmed flow exists."),
-        ActionSpec("workflow.execute", s(p("target", 80)), Risk.MEDIUM, "", "none", false, "Not implemented yet. Feasible via saved routines; a plan itself already runs several actions one at a time."),
+        ActionSpec("workflow.execute", s(p("target", 80)), Risk.MEDIUM, "", "routine_ran", true, "Runs an EXISTING saved routine by exact name. Every step goes through the normal router, so each send/call/like step still asks its own confirmation and the routine halts at the first one."),
         ActionSpec("automation.cancel", s(), Risk.LOW, "", "state_cancelled", true, "Same as Stop Automation.")
     )
     private val byType = all.associateBy { it.type }

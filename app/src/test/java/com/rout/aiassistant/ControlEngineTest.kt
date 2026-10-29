@@ -68,7 +68,7 @@ class ControlEngineTest {
         assertEquals(Risk.HIGH, ActionRegistry.effectiveRisk(valid(plan("g", act("ui.tap", params = """{"text":"Like"}"""))).actions[0]))
         assertEquals(Risk.HIGH, ActionRegistry.effectiveRisk(valid(plan("h", act("call.end"))).actions[0]))
         assertEquals(Risk.LOW, ActionRegistry.effectiveRisk(valid(plan("f", act("device.flashlight_on"))).actions[0]))
-        assertTrue(ActionRegistry.unsupportedTypes.containsAll(listOf("file.delete", "file.rename", "file.open", "workflow.execute")))
+        assertTrue(ActionRegistry.unsupportedTypes.containsAll(listOf("file.delete", "file.rename", "file.open")))
     }
 
     @Test fun runsOneAtATimeAndReportsHonestly() = runBlocking {
@@ -147,5 +147,37 @@ class ControlEngineTest {
         assertTrue(e.run(valid(plan("p10", act("screen.back")))) is ControlOutcome.Rejected)
         e.stop(); job.await()
         Unit
+    }
+
+    private fun exec(routine: (suspend (String) -> Pair<Boolean, String>)? = null,
+                     notes: Map<String, Pair<String, List<String>>>? = emptyMap(), dismissed: MutableList<String> = ArrayList()) =
+        AndroidExecutor(androidx.test.core.app.ApplicationProvider.getApplicationContext(), svc = { null }, contactRows = { emptyList() },
+            routineRunner = routine, appNotifications = { notes }, dismissKeys = { dismissed.addAll(it) })
+
+    @Test fun dismissAppNeedsUniqueAppAndConfirmation() = runBlocking {
+        val notes = mapOf("com.a" to ("WhatsApp" to listOf("k1", "k2")), "com.b" to ("WhatsApp Business" to listOf("k3")), "com.c" to ("Gmail" to listOf("k4")))
+        val gone = ArrayList<String>()
+        val ex = exec(notes = notes, dismissed = gone)
+        val one = valid(plan("d1", act("notification.dismiss_app", "gmail"))).actions[0]
+        assertEquals(Risk.HIGH, ActionRegistry.effectiveRisk(one))
+        assertTrue(ex.describe(one).contains("Gmail ke 1 notifications"))
+        assertTrue(ex.execute(one).ok); assertEquals(listOf("k4"), gone)
+        // exact label wins over a prefix match
+        gone.clear(); assertTrue(ex.execute(valid(plan("d2", act("notification.dismiss_app", "whatsapp"))).actions[0]).ok); assertEquals(listOf("k1", "k2"), gone)
+        // ambiguous partial match: nothing dismissed
+        gone.clear(); val amb = ex.execute(valid(plan("d3", act("notification.dismiss_app", "what"))).actions[0])
+        assertFalse(amb.ok); assertTrue(gone.isEmpty())
+        // unknown app and missing access
+        assertFalse(ex.execute(valid(plan("d4", act("notification.dismiss_app", "tiktok"))).actions[0]).ok)
+        assertFalse(exec(notes = null).execute(one).ok)
+    }
+
+    @Test fun workflowExecuteRunsExistingRoutineOnly() = runBlocking {
+        val seen = ArrayList<String>()
+        val ok = exec(routine = { n -> seen.add(n); (n == "good morning") to (if (n == "good morning") "Routine: good morning. ok" else "nahi mila") })
+        val a = valid(plan("w1", act("workflow.execute", "good morning"))).actions[0]
+        assertTrue(ok.execute(a).ok); assertEquals(listOf("good morning"), seen)
+        assertFalse(ok.execute(valid(plan("w2", act("workflow.execute", "nonexistent"))).actions[0]).ok)
+        assertFalse(exec(routine = null).execute(a).ok)
     }
 }

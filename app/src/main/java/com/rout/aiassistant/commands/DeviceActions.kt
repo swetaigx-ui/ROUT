@@ -550,6 +550,14 @@ object DeviceActions {
 
     /** All phone rows whose display name contains [name]. */
     fun queryContacts(context: Context, name: String): List<ContactResolver.Row> {
+        val direct = queryContactsExact(context, name)
+        if (direct.isNotEmpty() || !Translit.hasDevanagari(name)) return direct
+        // Contact saved in Latin letters, spoken name arrived in Devanagari: look up the romanised form (several hits stay ambiguous).
+        val roman = Translit.toRoman(name)
+        return if (roman.length >= 2) queryContactsExact(context, roman) else direct
+    }
+
+    private fun queryContactsExact(context: Context, name: String): List<ContactResolver.Row> {
         val out = ArrayList<ContactResolver.Row>()
         val cursor = context.contentResolver.query(
             ContactsContract.CommonDataKinds.Phone.CONTENT_URI,

@@ -1253,6 +1253,15 @@ class CommandRouter(
     suspend fun runValidatedChain(steps: List<String>): String =
         runRoutine(Routine(trigger = "ai chain", steps = steps.joinToString("\n"))).second
 
+    /** Runs an existing saved routine by its exact trigger name (used by the control engine). Same halting-at-first-confirmation path. */
+    suspend fun runSavedRoutine(name: String): Pair<Boolean, String> {
+        if (inRoutine) return false to "Routine ke andar routine nahi chalta."
+        val n = name.trim().lowercase()
+        val r = db.routines().enabled().firstOrNull { it.trigger.trim().lowercase() == n }
+            ?: return false to "'$name' naam ka saved routine nahi mila."
+        return runRoutine(r)
+    }
+
     private suspend fun runRoutine(r: Routine): Pair<Boolean, String> {
         inRoutine = true
         try {
