@@ -10,30 +10,32 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,45 +48,91 @@ import com.rout.aiassistant.control.ControlState as CS
 import com.rout.aiassistant.data.Message
 import com.rout.aiassistant.ui.components.GlassBox
 import com.rout.aiassistant.ui.components.GlassFill
-import com.rout.aiassistant.ui.components.GlassFillStrong
-import com.rout.aiassistant.ui.components.SiriOrb
+import com.rout.aiassistant.ui.components.RefIcons
 import com.rout.aiassistant.ui.components.RoutDock
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import com.rout.aiassistant.ui.components.SiriOrb
+import com.rout.aiassistant.ui.components.WarmGlassBox
 import com.rout.aiassistant.ui.components.Warby
-import com.rout.aiassistant.ui.components.WarbyMode
-import com.rout.aiassistant.ui.components.RoutBackground
 import com.rout.aiassistant.ui.theme.*
 import com.rout.aiassistant.voice.AssistantState
 
 /**
- * Home: the user's approved reference design - ROUT AI header with status
- * pill, glowing R orb (tap to talk), live wave bars, QUICK ACTIONS tile grid,
- * pinned talk bar. Layout is fixed: header, tiles and talk bar never scroll;
- * only the conversation area scrolls. Chat keeps the real backend/commands.
+ * Home: Gyan's approved 2026-10-29 reference design (he picked the cream-glass
+ * preview himself: "sab paanch se yah accha laga, isko add karo"). Compact
+ * header (avatar + ROUT + persona selector), one large luminous glass hero
+ * panel holding the real SiriOrb (tap = mic) with the status line + LIVE
+ * toggle in its footer, six real skill commands as a 2-column glass pill grid,
+ * and the existing RoutDock. Warm near-black backdrop with localized
+ * cream/amber light pools that show through the translucent glass. Every
+ * control is wired to the same real actions as before - only the visual
+ * composition changed. The frosted glass samples a pre-rendered software-blurred
+ * copy of this painted backdrop (see components/FrostedGlass.kt).
  */
+private val CreamText = Color(0xFFFDF8F1)
+private val CreamDim = Color(0x99FDF8F1)
+private val LiveAmber = Color(0xFFFF8A2A)
+private val IconAmber = Color(0xFFFFB04A)
+private val IconChip = Color(0x38FF963C)
+
+/** Approved backdrop: near-black base, localized cream pool upper-middle,
+ *  warm amber pool lower-middle, faint olive top-right, dark falloff bottom. */
+@Composable
+private fun RoutHomeBackground(content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var backdrop by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wPx = with(density) { maxWidth.toPx() }.toInt()
+        val hPx = with(density) { maxHeight.toPx() }.toInt()
+        LaunchedEffect(wPx, hPx) {
+            if (wPx > 0 && hPx > 0) {
+                backdrop = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    com.rout.aiassistant.ui.components.buildBlurredHomeBackdrop(wPx, hPx)
+                }
+            }
+        }
+        var bgOrigin by remember { mutableStateOf(Offset.Zero) }
+        val bgBmp = androidx.compose.ui.graphics.ImageBitmap.imageResource(com.rout.aiassistant.R.drawable.home_bg)
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.rout.aiassistant.ui.components.LocalFrostedBackdrop provides
+                backdrop?.let { com.rout.aiassistant.ui.components.FrostedBackdrop(it, bgOrigin) }
+        ) {
+            Box(
+                Modifier.fillMaxSize()
+                    .onGloballyPositioned { bgOrigin = it.boundsInRoot().topLeft }
+                    .drawBehind {
+                    // Approved home11 background texture (bg7), fill-crop centered.
+                    val bw = bgBmp.width.toFloat(); val bh = bgBmp.height.toFloat()
+                    val sc = maxOf(size.width / bw, size.height / bh)
+                    val dw = bw * sc; val dh = bh * sc
+                    val ox = (size.width - dw) / 2f; val oy = (size.height - dh) / 2f
+                    drawImage(bgBmp,
+                        srcOffset = IntOffset.Zero, srcSize = IntSize(bgBmp.width, bgBmp.height),
+                        dstOffset = IntOffset(ox.toInt(), oy.toInt()),
+                        dstSize = IntSize(dw.toInt(), dh.toInt()),
+                        filterQuality = FilterQuality.High)
+                    },
+                content = content
+            )
+        }
+    }
+}
+
+private data class Skill(val icon: ImageVector, val title: String, val sub: String, val cmd: String)
+
 @Composable
 fun HomeScreen(vm: MainViewModel, nav: NavController) {
     val state by vm.assistantState.collectAsState()
-    val rawEmotion by vm.emotion.collectAsState()
-    val warbyEmotionsOn by vm.warbyEmotions.collectAsState()
-    val emotion = if (warbyEmotionsOn) rawEmotion else null
     val rms by vm.rms.collectAsState()
     val partial by vm.partial.collectAsState()
     val messages by vm.messages.collectAsState()
     val online by vm.online.collectAsState()
     val reducedMotion by vm.reducedMotion.collectAsState()
-    val voiceMode by vm.voiceMode.collectAsState()
     val voiceDetail by vm.voiceDetail.collectAsState()
     val liveState by vm.liveState.collectAsState()
     val liveError by vm.liveError.collectAsState()
     val liveHeard by vm.liveHeard.collectAsState()
     val confirm by vm.confirm.collectAsState()
     val context = LocalContext.current
-
-    val listState = rememberLazyListState()
 
     var micGranted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
@@ -96,134 +144,145 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
         if (granted) pendingMicAction() else vm.setBanner("Microphone denied. Text input still works.")
     }
     val micTap = { if (!micGranted) { pendingMicAction = { vm.onMicTap() }; showMicRationale = true } else vm.onMicTap() }
+    val liveTap = { if (!micGranted) { pendingMicAction = { vm.toggleLive() }; showMicRationale = true } else vm.toggleLive() }
 
-    // Auto-scroll only when already near the bottom - never yank the user upward.
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty() && listState.firstVisibleItemIndex >= messages.size - 3) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
-    }
-
-    RoutBackground {
+    RoutHomeBackground {
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // ---- Top: persona pill + settings ----
+            // ---- Header: avatar + ROUT + persona selector, settings gear ----
             val persona by vm.personaMode.collectAsState()
             val personaLabel = com.rout.aiassistant.ai.Personas.byId(persona).label
-            Row(Modifier.fillMaxWidth().padding(top = 14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                GlassBox(radius = 50.dp) {
-                    Row(
-                        Modifier.clickable {
-                            val all = com.rout.aiassistant.ai.Personas.ALL
-                            val i = all.indexOfFirst { it.id == persona }.coerceAtLeast(0)
-                            vm.setPersona(all[(i + 1) % all.size].id)
-                        }.padding(horizontal = 18.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(Modifier.size(9.dp).background(
-                            Brush.linearGradient(listOf(Color(0xFF5EEAD4), Color(0xFFA855F7))), RoundedCornerShape(50)))
-                        Spacer(Modifier.width(10.dp))
-                        Text("ROUT", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("  \u00B7 $personaLabel \u25BE", color = Color(0xFF8D97A6), fontSize = 15.sp, maxLines = 1)
+            Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.clickable {
+                        val all = com.rout.aiassistant.ai.Personas.ALL
+                        val i = all.indexOfFirst { it.id == persona }.coerceAtLeast(0)
+                        vm.setPersona(all[(i + 1) % all.size].id)
+                    },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier.size(34.dp).clip(CircleShape).background(
+                            Brush.sweepGradient(listOf(
+                                Color(0xFFFF7A1A), Color(0xFFFFB04A), Color(0xFFB44CF5),
+                                Color(0xFF5D7BFF), Color(0xFFFF7A1A)
+                            ))
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) { Text("R", color = Color(0xFF160903), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("Mode: $personaLabel \u25BE", color = CreamDim, fontSize = 10.sp, maxLines = 1)
+                        Text("ROUT", color = CreamText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     }
                 }
-                GlassBox(radius = 50.dp) {
-                    Icon(Icons.Default.Settings, "Settings", tint = Color(0xFFC9D2DE),
-                        modifier = Modifier.size(46.dp).clickable { nav.navigate("settings") }.padding(12.dp))
+                Spacer(Modifier.weight(1f))
+                WarmGlassBox(Modifier, radius = 17.dp) {
+                    Icon(Icons.Default.Settings, "Settings", tint = Color(0xFFF5E2CC),
+                        modifier = Modifier.size(34.dp).clickable { nav.navigate("settings") }.padding(8.dp))
                 }
             }
 
             ControlStrip(vm)
 
-            // ---- Stage: orb, status, caption ----
-            Column(
-                Modifier.weight(1f).fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
-                    SiriOrb(state = state, rms = rms, reducedMotion = reducedMotion, size = 220.dp)
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    when {
-                        liveState == "live" -> "LIVE"
-                        liveState == "connecting" -> "CONNECTING\u2026"
-                        !online && state == AssistantState.IDLE -> "OFFLINE \u00B7 TAP TO TALK"
-                        state == AssistantState.LISTENING -> "LISTENING\u2026"
-                        state == AssistantState.PROCESSING -> "THINKING\u2026"
-                        state == AssistantState.SPEAKING -> "SPEAKING"
-                        state == AssistantState.EXECUTING -> "WORKING\u2026"
-                        state == AssistantState.WAITING_CONFIRMATION -> "CONFIRM ON SCREEN"
-                        state == AssistantState.ERROR -> "ERROR"
-                        else -> "TAP TO TALK"
-                    },
-                    color = if (state == AssistantState.ERROR) RoutError else Color(0xFF8D97A6),
-                    fontSize = 12.sp, letterSpacing = 3.sp
-                )
-                val lastReply = messages.lastOrNull { it.role != "user" }?.text
-                val caption = when {
-                    state == AssistantState.LISTENING && partial.isNotBlank() -> partial
-                    liveState == "live" -> "LIVE on - tap to end"
-                    lastReply != null -> lastReply
-                    else -> ""
-                }
-                Box(Modifier.heightIn(min = 44.dp).padding(top = 8.dp).clickable(enabled = liveState == "live") { vm.toggleLive() }, contentAlignment = Alignment.Center) {
-                    Text(caption, color = Color(0xFFF5F7FA), fontSize = 17.sp, textAlign = TextAlign.Center, maxLines = 3,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 320.dp))
-                }
-            }
-
-            // ---- Status line: live / voice diagnostics ----
-            val statusText = when {
-                liveState == "connecting" -> "Live connecting..."
-                liveState == "failed" -> (liveError ?: "Live unavailable")
-                liveState == "live" && liveHeard.isNotBlank() -> "Sun raha: " + liveHeard
-                liveState == "live" -> "LIVE on - bolo, ROUT sun raha hai"
-                voiceDetail.isNotBlank() -> "Last voice: " + voiceDetail
-                else -> ""
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(statusText, color = if (liveState == "failed") RoutError else Color(0xFF8D97A6),
-                    style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.weight(1f))
-                if (liveState != "live" && liveState != "connecting") {
-                    Text("LIVE", color = RoutCyan, style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.clickable { if (!micGranted) { pendingMicAction = { vm.toggleLive() }; showMicRationale = true } else vm.toggleLive() }.padding(horizontal = 8.dp, vertical = 4.dp))
-                }
-                if (state != AssistantState.IDLE) {
-                    Text("STOP", color = RoutError, style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.clickable { vm.stopAll() }.padding(horizontal = 8.dp, vertical = 4.dp))
-                }
-            }
-
-            // ---- Skill cards (real ROUT commands) ----
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf(
-                    Triple("\uD83D\uDD52", "Time & Date" to "Abhi kitne baje?", "time batao"),
-                    Triple("\u23F1\uFE0F", "Timer" to "2 minute ka timer", "2 minute ka timer"),
-                    Triple("\uD83D\uDCDD", "Notes" to "Kya yaad hai?", "__notes"),
-                    Triple("\uD83C\uDF24\uFE0F", "Weather" to "Aaj ka mausam", "weather batao"),
-                    Triple("\u25B6\uFE0F", "YouTube" to "YouTube kholo", "YouTube kholo"),
-                    Triple("\uD83D\uDCDE", "Call" to "Kisi ko call karo", "phone kholo")
-                ).forEach { (ico, titleSub, cmd) ->
-                    GlassBox(Modifier.width(150.dp).height(120.dp), radius = 22.dp) {
-                        Column(
-                            Modifier.fillMaxSize().clickable { if (cmd == "__notes") nav.navigate("notes") else vm.onUserText(cmd, false) }.padding(16.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(ico, fontSize = 26.sp)
-                            Column {
-                                Text(titleSub.first, color = Color(0xFFF5F7FA), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                Text(titleSub.second, color = Color(0xFF8D97A6), fontSize = 12.sp, maxLines = 1)
-                            }
+            // ---- Hero: big luminous glass panel, orb + status + LIVE ----
+            WarmGlassBox(Modifier.fillMaxWidth().fillMaxHeight(0.52f), radius = 26.dp, hero = true, tex = com.rout.aiassistant.R.drawable.glass_hero) {
+                Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Box(Modifier.clickable { micTap() }, contentAlignment = Alignment.Center) {
+                            SiriOrb(state = state, rms = rms, reducedMotion = reducedMotion, size = 236.dp)
                         }
+                    }
+                    val lastReply = messages.lastOrNull { it.role != "user" }?.text
+                    val caption = when {
+                        state == AssistantState.LISTENING && partial.isNotBlank() -> partial
+                        liveState == "live" && liveHeard.isNotBlank() -> "Sun raha: $liveHeard"
+                        else -> ""
+                    }
+                    if (caption.isNotBlank()) {
+                        Text(caption, color = CreamText, fontSize = 13.sp, textAlign = TextAlign.Center,
+                            maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp))
+                    }
+                    Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when {
+                                liveState == "live" -> "LIVE"
+                                liveState == "connecting" -> "CONNECTING\u2026"
+                                !online && state == AssistantState.IDLE -> "OFFLINE \u00B7 TAP TO TALK"
+                                state == AssistantState.LISTENING -> "LISTENING\u2026"
+                                state == AssistantState.PROCESSING -> "THINKING\u2026"
+                                state == AssistantState.SPEAKING -> "SPEAKING"
+                                state == AssistantState.EXECUTING -> "WORKING\u2026"
+                                state == AssistantState.WAITING_CONFIRMATION -> "CONFIRM ON SCREEN"
+                                state == AssistantState.ERROR -> "ERROR"
+                                else -> "TAP TO TALK"
+                            },
+                            color = if (state == AssistantState.ERROR) RoutError else CreamDim,
+                            fontSize = 10.sp, letterSpacing = 3.sp
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            if (liveState == "live") "END" else "LIVE",
+                            color = LiveAmber, fontSize = 10.5.sp, letterSpacing = 1.6.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { liveTap() }.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
                     }
                 }
             }
 
-            // ---- Dock ----
+            // ---- Diagnostics: live/voice status + STOP (only when there is something to say) ----
+            val statusText = when {
+                liveState == "connecting" -> "Live connecting..."
+                liveState == "failed" -> (liveError ?: "Live unavailable")
+                liveState == "live" && liveHeard.isBlank() -> "LIVE on - bolo, ROUT sun raha hai"
+                voiceDetail.isNotBlank() -> "Last voice: " + voiceDetail
+                else -> ""
+            }
+            if (statusText.isNotBlank() || state != AssistantState.IDLE) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(statusText, color = if (liveState == "failed") RoutError else CreamDim,
+                        style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.weight(1f))
+                    if (state != AssistantState.IDLE) {
+                        Text("STOP", color = RoutError, style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clickable { vm.stopAll() }.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                }
+            }
+
+            // ---- Six real skills, 2-column glass pills ----
+            val skills = listOf(
+                Skill(RefIcons.Clock, "Time & Date", "Abhi kitne baje?", "time batao"),
+                Skill(RefIcons.Timer, "Timer", "2 minute ka timer", "2 minute ka timer"),
+                Skill(RefIcons.NotePen, "Notes", "Kya yaad hai?", "__notes"),
+                Skill(RefIcons.Cloud, "Weather", "Aaj ka mausam", "weather batao"),
+                Skill(RefIcons.YouTube, "YouTube", "YouTube kholo", "YouTube kholo"),
+                Skill(RefIcons.Phone, "Call", "Kisi ko call karo", "phone kholo")
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                skills.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        pair.forEach { s ->
+                            val texIdx = skills.indexOf(s) + 1
+                            val texRes = when (texIdx) {
+                                1 -> com.rout.aiassistant.R.drawable.glass_sk1
+                                2 -> com.rout.aiassistant.R.drawable.glass_sk2
+                                3 -> com.rout.aiassistant.R.drawable.glass_sk3
+                                4 -> com.rout.aiassistant.R.drawable.glass_sk4
+                                5 -> com.rout.aiassistant.R.drawable.glass_sk5
+                                else -> com.rout.aiassistant.R.drawable.glass_sk6
+                            }
+                            SkillPill(s, Modifier.weight(1f), texRes) {
+                            if (s.cmd == "__notes") nav.navigate("notes") else vm.onUserText(s.cmd, false)
+                        } }
+                    }
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
             RoutDock("home", nav, Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
         }
 
@@ -293,6 +352,26 @@ fun HomeScreen(vm: MainViewModel, nav: NavController) {
                     }
                     Text(req.description, color = RoutDim)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkillPill(s: Skill, modifier: Modifier, texRes: Int, onClick: () -> Unit) {
+    WarmGlassBox(modifier.height(52.dp), radius = 16.dp, tex = texRes) {
+        Row(
+            Modifier.fillMaxSize().clickable(onClick = onClick).padding(horizontal = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(28.dp).clip(CircleShape).background(IconChip),
+                contentAlignment = Alignment.Center
+            ) { Icon(s.icon, contentDescription = null, tint = IconAmber, modifier = Modifier.size(14.dp)) }
+            Spacer(Modifier.width(9.dp))
+            Column {
+                Text(s.title, color = CreamText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(s.sub, color = CreamDim, fontSize = 9.5.sp, maxLines = 1)
             }
         }
     }

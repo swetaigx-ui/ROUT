@@ -199,11 +199,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (com.rout.aiassistant.commands.SpokenCommands.looksLikeCommand(com.rout.aiassistant.commands.HindiNormal.latinize(utter.lowercase()))) {
                     db.conversations().insertMessage(Message(conversationId = cid, role = "rout",
                         text = "Command nahi chala: saved naam \"${assistantName.value}\" se shuru nahi hua. Aise bolo: \"${assistantName.value}, ${utter.trim()}\"."))
+                    live.sendContextNote("[ROUT device action result]: KUCH NAHI CHALA - user ne command saved naam se shuru nahi ki. Politely batao ki phone action ke liye \"${assistantName.value}\" se shuru karke bole. Kabhi mat bolo ki action ho gaya.")
                 }
                 return@launch
             }
             if (personalityTurn(toRun, fromLive = true)) return@launch
             val reply = router.handle(toRun, localOnly = true)
+            if (reply.isBlank() && com.rout.aiassistant.commands.SpokenCommands.looksLikeCommand(com.rout.aiassistant.commands.HindiNormal.latinize(toRun.lowercase()))) {
+                // Nothing ran: not a known local command and the validated PLAN path
+                // returned nothing (unenrolled / busy / no valid plan). The model
+                // already acked in this turn - it must NOT let that stand as done.
+                live.sendContextNote("[ROUT device action result]: KUCH NAHI HUA - ye command phone par nahi chali (command samajh nahi aayi ya plan nahi ban saka). User ko honestly short mein batao ki action nahi hua, aur use dobara ya simple shabdon mein bolne ko kaho. Kabhi mat bolo ki kaam ho gaya.")
+            }
             if (reply.isNotBlank()) {
                 db.conversations().insertMessage(Message(conversationId = cid, role = "user", text = utter))
                 db.conversations().insertMessage(Message(conversationId = cid, role = "rout", text = reply))

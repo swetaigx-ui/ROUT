@@ -465,6 +465,11 @@ class CommandRouter(
         }
 
         // --- Spoken commands (LIVE and typed): YouTube search words only, WhatsApp name+words, like, status ---
+        // Reels: navigation only (no account action) - deep link into Instagram's reels tab.
+        if (Regex("""^(?:instagram\s+)?reels?\s*(?:kholo|khol do|open karo|chalao|chala do|play karo)?\s*$""").matches(t)) {
+            val r = DeviceActions.openWebsite(context, "https://www.instagram.com/reels/")
+            return r.ok to if (r.ok) "Instagram reels khol rahi hoon." else r.message
+        }
         SpokenCommands.youtubeQuery(t, appContext("youtube", "com.google.android.youtube"))?.let { q ->
             sayFirst("YouTube par dhoondh rahi hoon")
             noteApp("youtube")

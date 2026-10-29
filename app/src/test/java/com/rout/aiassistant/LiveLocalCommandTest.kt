@@ -52,6 +52,13 @@ class LiveLocalCommandTest {
         assertEquals("", reply)
     }
 
+    @Test fun reelsPhraseRoutesToInstagramReels() = runBlocking {
+        // User's explicit ask: "reels kholo/chalao" must DO something real -
+        // navigation into Instagram's reels tab, not a dead-end.
+        val reply = router.handle("reels kholo", localOnly = true)
+        assertTrue("reels route must dispatch, got: " + reply, reply.contains("reels", ignoreCase = true))
+    }
+
     @Test fun devanagariTranscriptionStillRoutesLocally() = runBlocking {
         // Live inputTranscription returned Devanagari in the bounded session
         // test; latinize() must still route it to the local time handler.

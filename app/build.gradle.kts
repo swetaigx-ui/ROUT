@@ -13,8 +13,8 @@ android {
         applicationId = "com.rout.aiassistant"
         minSdk = 26
         targetSdk = 36
-        versionCode = 59
-        versionName = "0.7.31"
+        versionCode = 60
+        versionName = "0.8.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -49,7 +49,7 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
-            all { it.maxHeapSize = "850m" }
+            all { it.maxHeapSize = "600m"; it.forkEvery = 15 }
         }
     }
 }
