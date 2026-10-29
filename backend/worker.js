@@ -542,8 +542,16 @@ async function handlePlan(request, env) {
       signal: AbortSignal.timeout(20000)
     });
   if (!upstream.ok) {
-    let why = ''; try { const e = await upstream.json(); why = String((e.error && (e.error.status || e.error.message)) || '').slice(0, 120); } catch (_) {}
-    return json({ error: 'upstream_error', upstream_status: upstream.status, upstream_reason: why }, 502);
+    let why = '', retry = '', quota = [];
+    try {
+      const e = await upstream.json(); why = String((e.error && (e.error.status || e.error.message)) || '').slice(0, 120);
+      for (const d of ((e.error && e.error.details) || [])) {
+        if (d && typeof d.retryDelay === 'string') retry = d.retryDelay.slice(0, 20);
+        for (const v of ((d && d.violations) || [])) quota.push(String(v.quotaId || v.quotaMetric || '').slice(0, 100));
+      }
+    } catch (_) {}
+    const ra = upstream.headers.get('retry-after') || '';
+    return json({ error: 'upstream_error', upstream_status: upstream.status, upstream_reason: why, retry_delay: retry || ra, quota: quota.slice(0, 4) }, 502);
   }
   const data = await upstream.json().catch(() => ({}));
   const text = ((((data.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('');
