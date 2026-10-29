@@ -1002,11 +1002,53 @@ class CommandRouter(
             Regex("(previous|pichla) (song|track|gaana)").containsMatchIn(t) -> { val r = MediaControl.previous(context); return r.ok to r.message }
         }
 
+        // --- Direct screen control via accessibility: scroll / swipe / back / home ---
+        // Local route: works WITHOUT backend enrollment; only the accessibility service is needed.
+        // When the service is off the reply says exactly how to enable it - nothing is promised.
+        run {
+            val svcOff = "Screen control off hai. ROUT Settings > Screen control pe jakar accessibility service on karo."
+            val svc = com.rout.aiassistant.service.RoutAccessibilityService.instance
+            if (Regex("scroll|swipe").containsMatchIn(t)) {
+                if (svc == null) return false to svcOff
+                val down = Regex("down|neeche|niche|aage").containsMatchIn(t)
+                val up = Regex("up|upar|oopar|upar ki").containsMatchIn(t)
+                val left = Regex("left|bayan|baaye|baen").containsMatchIn(t)
+                val right = Regex("right|dayan|daaye|daen").containsMatchIn(t)
+                return when {
+                    t.contains("swipe") && left -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("left")) true to "Swipe left." else false to "Swipe nahi chala."
+                    t.contains("swipe") && right -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("right")) true to "Swipe right." else false to "Swipe nahi chala."
+                    t.contains("swipe") && up -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("up")) true to "Swipe up." else false to "Swipe nahi chala."
+                    t.contains("swipe") && down -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("down")) true to "Swipe down." else false to "Swipe nahi chala."
+                    t.contains("swipe") -> if (!svc.readableAndSafe()) false to "Screen padhne layak/safe nahi." else if (svc.swipe("down")) true to "Swipe down." else false to "Swipe nahi chala."
+                    up && !down -> if (svc.scroll(false)) true to "Scroll up." else false to "Is screen par kuch scroll nahi hua."
+                    else -> if (svc.scroll(true)) true to "Scroll down." else false to "Is screen par kuch scroll nahi hua."
+                }
+            }
+            if (Regex("^(?:back|peeche|wapas)(?:\\s+(?:karo|kar do|jao|jao na))?$").matches(t)) {
+                if (svc == null) return false to svcOff
+                return if (svc.back()) true to "Back gaya." else false to "Back nahi ho paya (ya screen sensitive hai)."
+            }
+            if (Regex("^(?:home|ghar)(?:\\s+(?:jao|karo))?$").matches(t) || t == "home screen kholo") {
+                if (svc == null) return false to svcOff
+                return if (svc.home()) true to "Home gaya." else false to "Home nahi ho paya."
+            }
+        }
+
         // --- Brightness ---
         Regex("brightness\\s*(?:set\\s*)?(?:to\\s*)?(\\d{1,3})").find(t)?.let {
             val r = DeviceActions.setBrightness(context, it.groupValues[1].toInt())
             if (!r.ok) DeviceActions.openWriteSettingsPage(context)
             return r.ok to r.message
+        }
+        if (Regex("brightness").containsMatchIn(t) && Regex("badha|kam |ghata|up|down|zyada|dheem|high|low|increase|decrease|tez").containsMatchIn(t)) {
+            val cur = try { android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS) } catch (e: Exception) { -1 }
+            if (cur >= 0) {
+                val up = Regex("badha|up|zyada|high|increase|tez").containsMatchIn(t)
+                val pct = ((cur * 100) / 255 + (if (up) 10 else -10)).coerceIn(1, 100)
+                val r = DeviceActions.setBrightness(context, pct)
+                if (!r.ok) DeviceActions.openWriteSettingsPage(context)
+                return r.ok to r.message
+            }
         }
         if (t.contains("brightness")) { val r = DeviceActions.openBrightnessSettings(context); return r.ok to r.message }
 

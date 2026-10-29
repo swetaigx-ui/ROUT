@@ -340,6 +340,8 @@ class RoutAccessibilityService : AccessibilityService() {
         val (sx, sy, ex, ey) = when (dir) {
             "left" -> listOf(w * 0.8f, h * 0.5f, w * 0.2f, h * 0.5f)
             "right" -> listOf(w * 0.2f, h * 0.5f, w * 0.8f, h * 0.5f)
+            "up" -> listOf(w * 0.5f, h * 0.75f, w * 0.5f, h * 0.25f)
+            "down" -> listOf(w * 0.5f, h * 0.25f, w * 0.5f, h * 0.75f)
             else -> return false
         }
         val path = android.graphics.Path().apply { moveTo(sx, sy); lineTo(ex, ey) }
