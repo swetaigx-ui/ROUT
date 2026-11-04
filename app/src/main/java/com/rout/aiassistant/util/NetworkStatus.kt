@@ -51,4 +51,21 @@ object NetworkStatus {
         val caps = cm.getNetworkCapabilities(net) ?: return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
+
+    /** Last known location as a short text (for SMS anti-theft). Coarse/fine, whichever the OS grants. */
+    fun lastKnownLocationText(ctx: Context): String {
+        return try {
+            val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+            val providers = listOf(android.location.LocationManager.GPS_PROVIDER, android.location.LocationManager.NETWORK_PROVIDER)
+            var best: android.location.Location? = null
+            for (p in providers) {
+                try {
+                    val l = lm.getLastKnownLocation(p)
+                    if (l != null && (best == null || l.time > best!!.time)) best = l
+                } catch (_: SecurityException) {}
+            }
+            if (best == null) "location nahi mili (GPS/permission off)"
+            else "https://maps.google.com/?q=${best.latitude},${best.longitude} (accuracy ${best.accuracy.toInt()}m)"
+        } catch (e: Exception) { "location error: ${e.message}" }
+    }
 }

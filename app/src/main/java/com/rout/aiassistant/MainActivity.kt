@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         RoutApplication.foreground = true
+        com.rout.aiassistant.features.protect.AppLockActivity.maybeShow(this)
         registerReceiver(batteryReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
         sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.let {
             sensorManager.registerListener(accelListener, it, android.hardware.SensorManager.SENSOR_DELAY_NORMAL)

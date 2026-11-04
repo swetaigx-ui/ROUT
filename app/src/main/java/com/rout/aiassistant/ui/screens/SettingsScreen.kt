@@ -31,10 +31,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.rout.aiassistant.BuildConfig
 import com.rout.aiassistant.MainViewModel
 import com.rout.aiassistant.ai.Personas
 import com.rout.aiassistant.commands.MediaControl
+import com.rout.aiassistant.features.protect.ProtectPrefs
 import com.rout.aiassistant.service.RoutAccessibilityService
 import com.rout.aiassistant.ui.components.GlassBox
 import com.rout.aiassistant.ui.components.RefIcons
@@ -87,6 +90,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
     val currentPersona by vm.personaMode.collectAsState()
 
     val sectionOffsets = remember { mutableStateMapOf<String, Float>() }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
     val sectionAnchorPx = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
     val currentSection by remember {
         derivedStateOf {
@@ -555,6 +559,66 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                         listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history").forEach { (label, route) ->
                             RefChip(label, selected = false) { nav.navigate(route) }
                         }
+                    }
+                }
+
+
+                // --- Security & protection (opt-in; everything OFF by default) ---
+                SettingsCard("Security & protection", onY = { sectionOffsets["Security & protection"] = it }) {
+                    val pctx = context.applicationContext
+                    var dhundo by remember { mutableStateOf(with(ProtectPrefs) { pctx.dhundoOn }) }
+                    var antiTheft by remember { mutableStateOf(with(ProtectPrefs) { pctx.antiTheftOn }) }
+                    var intruder by remember { mutableStateOf(with(ProtectPrefs) { pctx.intruderOn }) }
+                    var appLock by remember { mutableStateOf(with(ProtectPrefs) { pctx.appLockOn }) }
+                    var trustedNum by remember { mutableStateOf(with(ProtectPrefs) { pctx.trustedNumber }) }
+                    var secretWord by remember { mutableStateOf(with(ProtectPrefs) { pctx.secretWord }) }
+                    var pin by remember { mutableStateOf("") }
+
+                    RefSwitchRow("Phone Dhundo", "SMS se phone bajao (anti-theft ke saath). App ke andar 'Test' se bhi bajega.", dhundo) {
+                        dhundo = it; with(ProtectPrefs) { pctx.dhundoOn = it }
+                    }
+                    RefSwitchRow("Anti-theft SMS commands", "Trusted number se SMS: '<secret> dhundo' bajao, '<secret> stop' band, '<secret> location' pata. Sirf saved number se chalta hai.", antiTheft) {
+                        antiTheft = it; with(ProtectPrefs) { pctx.antiTheftOn = it }
+                    }
+                    if (antiTheft) {
+                        RefField(trustedNum, { trustedNum = it.take(16); with(ProtectPrefs) { pctx.trustedNumber = trustedNum } }, "Trusted number (apna doosra phone)")
+                        RefField(secretWord, { secretWord = it.take(20); with(ProtectPrefs) { pctx.secretWord = secretWord } }, "Secret word (jaise 'routx')")
+                        RefPermRow("SMS permission", ContextCompat.checkSelfPermission(pctx, android.Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) {
+                            permLauncher.launch(arrayOf(android.Manifest.permission.RECEIVE_SMS, android.Manifest.permission.SEND_SMS, android.Manifest.permission.READ_SMS))
+                        }
+                    }
+                    RefSwitchRow("Intruder photo", "Galat unlock ke baad front camera se ek photo. Photos sirf phone par (Files > intruders). Device admin ON karna hoga.", intruder) {
+                        intruder = it; with(ProtectPrefs) { pctx.intruderOn = it }
+                        if (it) {
+                            val dpm = pctx.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                            val cn = android.content.ComponentName(pctx, com.rout.aiassistant.features.protect.IntruderAdminReceiver::class.java)
+                            if (!dpm.isAdminActive(cn)) {
+                                val i = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                                    .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, cn)
+                                    .putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Galat password par intruder photo ke liye ROUT ko failed-unlock pata hona chahiye.")
+                                context.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                        }
+                    }
+                    if (intruder) {
+                        RefPermRow("Camera permission", ContextCompat.checkSelfPermission(pctx, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            permLauncher.launch(arrayOf(android.Manifest.permission.CAMERA))
+                        }
+                    }
+                    RefSwitchRow("App Lock", "ROUT kholne par PIN. PIN phone par encrypted save hota hai.", appLock) {
+                        appLock = it; with(ProtectPrefs) { pctx.appLockOn = it }
+                    }
+                    if (appLock) {
+                        RefField(pin, { pin = it.filter(Char::isDigit).take(6) }, "Naya PIN (4-6 digits)")
+                        RefPrimaryButton("PIN save karo", enabled = pin.length >= 4) {
+                            with(ProtectPrefs) { pctx.appLockPin = pin }
+                            pin = ""
+                        }
+                        Text(if (with(ProtectPrefs) { pctx.appLockPin }.isBlank()) "Abhi koi PIN nahi - save karo tabhi lock lagega." else "PIN set hai.", color = RefDim, fontSize = 12.sp)
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.weight(1f)) { RefAccentButton("Test: phone bajao") { com.rout.aiassistant.features.protect.FindPhoneController.start(pctx) } }
+                        Box(Modifier.weight(1f)) { RefGhostButton("Stop") { com.rout.aiassistant.features.protect.FindPhoneController.stop(pctx) } }
                     }
                 }
 

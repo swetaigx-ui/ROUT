@@ -18,6 +18,11 @@
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -113,6 +118,40 @@
             android:exported="false" />
         <receiver
             android:name=".service.ReplyReceiver"
+            android:exported="false" />
+        <!-- Anti-theft SMS commands (trusted number only, opt-in) -->
+        <receiver
+            android:name=".features.protect.SmsCommandReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+        <!-- Intruder camera: device admin watches failed unlocks -->
+        <receiver
+            android:name=".features.protect.IntruderAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".features.protect.SmartAlarmReceiver"
+            android:exported="false" />
+        <service
+            android:name=".features.protect.IntruderCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="camera" />
+        <activity
+            android:name=".features.protect.SmartAlarmActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+        <activity
+            android:name=".features.protect.AppLockActivity"
             android:exported="false" />
         <receiver
             android:name=".service.BootReceiver"

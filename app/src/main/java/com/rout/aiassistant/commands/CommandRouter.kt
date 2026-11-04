@@ -396,6 +396,8 @@ class CommandRouter(
     suspend fun handle(rawInput: String, localOnly: Boolean = false): String {
         val raw = rawInput.trim()
         if (raw.isEmpty()) return "Kuch sunai nahi diya. Please try again."
+        // Device-protection bundle (phone dhundo, smart alarm, ...) - direct user commands.
+        com.rout.aiassistant.features.protect.ProtectCommands.handle(context, raw)?.let { return it }
         // Clear a shared photo/PDF context.
         val vclear = raw.lowercase().trimEnd('.', '!')
         if (vclear in setOf("photo hatao", "picture hatao", "image hatao", "photo bhool jao",

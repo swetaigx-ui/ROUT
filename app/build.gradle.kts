@@ -13,9 +13,10 @@ android {
         applicationId = "com.rout.aiassistant"
         minSdk = 26
         targetSdk = 36
-        versionCode = 62
-        versionName = "0.8.2"
+        versionCode = 63
+        versionName = "0.9.0"
         vectorDrawables { useSupportLibrary = true }
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     signingConfigs {
@@ -80,6 +81,26 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.2")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("androidx.fragment:fragment-ktx:1.8.5") // pulls fragment >= 1.3 for ActivityResult lint
+    // CameraX for intruder photo + Hand Magic gesture control
+    val camerax = "1.4.2"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
+    implementation("androidx.lifecycle:lifecycle-service:2.9.4")
+    // ML Kit: on-device translation + barcode scanning (free, no API key)
+    implementation("com.google.mlkit:translate:17.0.3")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.google.mlkit:language-id:17.0.6")
+    // MediaPipe hand landmark detection (gesture control)
+    implementation("com.google.mediapipe:tasks-vision:0.10.14")
+    // Vosk offline speech recognition
+    implementation("com.alphacephei:vosk-android:0.3.47")
+    // Media3 transformer for video editing
+    val media3 = "1.6.1"
+    implementation("androidx.media3:media3-transformer:$media3")
+    implementation("androidx.media3:media3-effect:$media3")
+    implementation("androidx.media3:media3-common:$media3")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.77.0")
