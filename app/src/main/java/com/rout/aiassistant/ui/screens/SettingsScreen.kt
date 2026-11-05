@@ -619,7 +619,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(Modifier.weight(1f)) { RefAccentButton("Test: phone bajao") { com.rout.aiassistant.features.protect.FindPhoneController.start(pctx) } }
-                        Box(Modifier.weight(1f)) { RefGhostButton("Stop") { com.rout.aiassistant.features.protect.FindPhoneController.stop(pctx) } }
+                        Box(Modifier.weight(1f)) { RefGhostButton("Band karo") { com.rout.aiassistant.features.protect.FindPhoneController.stop(pctx) } }
                     }
                 }
 

@@ -8,12 +8,26 @@ import androidx.security.crypto.MasterKey
 object ProtectPrefs {
     private const val FILE = "rout_protect"
 
-    private fun prefs(ctx: Context) = EncryptedSharedPreferences.create(
-        ctx, FILE,
-        MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    @Volatile private var cached: android.content.SharedPreferences? = null
+
+    private fun prefs(ctx: Context): android.content.SharedPreferences =
+        cached ?: synchronized(this) {
+            cached ?: run {
+                val app = ctx.applicationContext
+                val p = try {
+                    EncryptedSharedPreferences.create(
+                        app, FILE,
+                        MasterKey.Builder(app).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+                        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                    )
+                } catch (t: Throwable) {
+                    // No AndroidKeyStore (e.g. Robolectric tests): fall back to plain prefs
+                    app.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                }
+                p.also { cached = it }
+            }
+        }
 
     private const val K_ANTITHEFT_ON = "antitheft_on"
     private const val K_TRUSTED_NUMBER = "trusted_number"

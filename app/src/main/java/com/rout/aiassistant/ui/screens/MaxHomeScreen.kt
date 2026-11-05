@@ -246,6 +246,20 @@ fun MaxHomeScreen(vm: MainViewModel, nav: NavController) {
                     contentAlignment = Alignment.Center
                 ) { Icon(Icons.Default.Call, "mic", tint = Color.White, modifier = Modifier.size(22.dp)) }
             }
+            // Powered by Gyan shimmer credit
+            val shimmerShift by rememberInfiniteTransition(label = "credit").animateFloat(
+                0f, 500f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "sh"
+            )
+            Text(
+                "Powered by Gyan",
+                fontSize = 11.sp,
+                style = TextStyle(brush = Brush.linearGradient(
+                    listOf(MaxDim, MaxInk, MaxDim),
+                    start = Offset(shimmerShift - 180f, 0f), end = Offset(shimmerShift, 0f)
+                )),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
     }
 }

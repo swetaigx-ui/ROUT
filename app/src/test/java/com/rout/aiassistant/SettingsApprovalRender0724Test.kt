@@ -80,8 +80,13 @@ class SettingsApprovalRender0724Test {
     }
 
     @Test fun dialogImageConfirm() = renderSurface("dlg_image_confirm_0724.png", "Confirm action", "Confirm", "Cancel") {
-        val bytes = java.io.File("/tmp/lt/fixture.jpg").readBytes()
-        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
+        val f = java.io.File("/tmp/lt/fixture.jpg")
+        val bmp = if (f.exists()) {
+            val bytes = f.readBytes()
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
+        } else {
+            android.graphics.Bitmap.createBitmap(64, 48, android.graphics.Bitmap.Config.ARGB_8888).asImageBitmap()
+        }
         androidx.compose.foundation.layout.Column {
             androidx.compose.foundation.Image(bmp, contentDescription = null, modifier = androidx.compose.ui.Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(bottom = 10.dp))
             androidx.compose.material3.Text("Ye screenshot AI ko bhejun? Poori screen ki image ROUT AI backend (phir Gemini) ko jaayegi - image mein jo bhi dikh raha hai (chat, naam, numbers, password) sab jaata hai, kuch chhupa nahi sakte. Private ho to Cancel dabao.\nYe image pehle ki capture hai (app: com.example.app, samay: 22:16:47) - sirf yahi dikhayi gayi image jaayegi, abhi ki screen nahi. Text badalne par ya doosre app mein jaane par ye nahi bheji jaayegi; sirf tasveer badle to ROUT pakad nahi sakta.\nSawal: ye kya hai", color = androidx.compose.ui.graphics.Color(0xFF8FA5B3))

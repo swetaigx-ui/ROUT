@@ -43,7 +43,7 @@ class LivePreviewRenderTest {
             decor.layout(0, 0, wPx, hPx)
             val bmp = Bitmap.createBitmap(wPx, hPx, Bitmap.Config.ARGB_8888)
             decor.draw(android.graphics.Canvas(bmp))
-            FileOutputStream(File(dir, name)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            File(dir, name).also { it.parentFile?.mkdirs() }.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
         composeRule.waitForIdle()
     }
