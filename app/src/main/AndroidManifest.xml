@@ -141,6 +141,15 @@
         <receiver
             android:name=".features.protect.SmartAlarmReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".features.briefing.BriefingReceiver"
+            android:exported="false" />
+        <service
+            android:name=".features.briefing.BriefingService"
+            android:exported="false" />
+        <service
+            android:name=".features.island.DynamicIslandService"
+            android:exported="false" />
         <service
             android:name=".features.protect.IntruderCaptureService"
             android:exported="false"
