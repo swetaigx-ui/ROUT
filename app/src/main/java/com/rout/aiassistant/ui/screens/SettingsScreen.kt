@@ -557,7 +557,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 SettingsCard("Screens", onY = { sectionOffsets["Screens"] = it }) {
                     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history",
-                            "Translator" to "translator", "Scanner" to "scanner", "Code Studio" to "codestudio", "Mirror" to "mirror", "Hand Magic" to "handmagic").forEach { (label, route) ->
+                            "Translator" to "translator", "Scanner" to "scanner", "Code Studio" to "codestudio", "Mirror" to "mirror", "Hand Magic" to "handmagic", "3D Avatar" to "avatar").forEach { (label, route) ->
                             RefChip(label, selected = false) { nav.navigate(route) }
                         }
                     }
@@ -620,6 +620,56 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(Modifier.weight(1f)) { RefAccentButton("Test: phone bajao") { com.rout.aiassistant.features.protect.FindPhoneController.start(pctx) } }
                         Box(Modifier.weight(1f)) { RefGhostButton("Stop") { com.rout.aiassistant.features.protect.FindPhoneController.stop(pctx) } }
+                    }
+                }
+
+
+                SettingsCard("Offline voice (Vosk)", onY = { sectionOffsets["Offline voice (Vosk)"] = it }) {
+                    val pctx = context.applicationContext
+                    val ostt = com.rout.aiassistant.features.offlinestt.OfflineSttEngine
+                    var offlineOn by remember { mutableStateOf(ostt.isEnabled(pctx)) }
+                    var modelReady by remember { mutableStateOf(ostt.isReady(pctx)) }
+                    var dlProgress by remember { mutableStateOf(-1) }
+                    RefSwitchRow("Offline voice typing", "ON: sunna (STT) poori tarah phone par - ek baar ~40MB model download, phir net ke bina kaam. Pehli baar download ke liye net chahiye.", offlineOn) { on ->
+                        if (on && !modelReady) {
+                            scope.launch {
+                                dlProgress = 0
+                                val ok = ostt.download(pctx) { dlProgress = it }
+                                modelReady = ok
+                                dlProgress = -1
+                                if (ok) { offlineOn = true; ostt.setEnabled(pctx, true) }
+                            }
+                        } else {
+                            offlineOn = on; ostt.setEnabled(pctx, on)
+                        }
+                    }
+                    Text(if (modelReady) "Model ready (English-India)." else if (dlProgress >= 0) "Download ho raha hai… $dlProgress%" else "Model abhi download nahi hua.",
+                        color = RefDim, fontSize = 12.sp)
+                }
+
+                SettingsCard("Morning briefing", onY = { sectionOffsets["Morning briefing"] = it }) {
+                    val pctx = context.applicationContext
+                    var briefTime by remember { mutableStateOf(with(com.rout.aiassistant.features.briefing.BriefingPrefs) { pctx.briefingMinutes }) }
+                    RefSwitchRow("Roz subah briefing", "Set time par weather + aaj ki 3 badi khabrein ROUT bol kar sunayega (device voice se).", briefTime >= 0) { on ->
+                        briefTime = if (on) 7 * 60 else -1
+                        with(com.rout.aiassistant.features.briefing.BriefingPrefs) { pctx.briefingMinutes = briefTime }
+                        com.rout.aiassistant.features.briefing.BriefingScheduler.schedule(pctx, briefTime)
+                    }
+                    if (briefTime >= 0) {
+                        var hh by remember { mutableStateOf((briefTime / 60).toString()) }
+                        var mm by remember { mutableStateOf((briefTime % 60).toString()) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.weight(1f)) { RefField(hh, { hh = it.filter(Char::isDigit).take(2) }, "Ghanta (0-23)") }
+                            Box(Modifier.weight(1f)) { RefField(mm, { mm = it.filter(Char::isDigit).take(2) }, "Minute") }
+                        }
+                        RefPrimaryButton("Time save karo") {
+                            val h = hh.toIntOrNull()?.coerceIn(0, 23) ?: 7
+                            val m = mm.toIntOrNull()?.coerceIn(0, 59) ?: 0
+                            briefTime = h * 60 + m
+                            with(com.rout.aiassistant.features.briefing.BriefingPrefs) { pctx.briefingMinutes = briefTime }
+                            com.rout.aiassistant.features.briefing.BriefingScheduler.schedule(pctx, briefTime)
+                        }
+                        Text("Briefing device voice (TTS) se boli jaati hai - natural voice backend tak limited hai. Weather ke liye Settings mein city save honi chahiye.", color = RefDim, fontSize = 12.sp)
                     }
                 }
 

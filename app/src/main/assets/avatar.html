@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;height:100%;background:#0a0a12;overflow:hidden}</style>
+</head><body>
+<script src="three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 100);
+cam.position.z = 4.2;
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+scene.add(new THREE.AmbientLight(0x404060));
+const l1 = new THREE.PointLight(0x67f0ff, 2); l1.position.set(3,3,3); scene.add(l1);
+const l2 = new THREE.PointLight(0xff5fa2, 1.4); l2.position.set(-3,-2,2); scene.add(l2);
+const orb = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 64, 64),
+  new THREE.MeshStandardMaterial({color:0x102030, metalness:0.6, roughness:0.25, emissive:0x0a2540, emissiveIntensity:0.9}));
+scene.add(orb);
+const eyeMat = new THREE.MeshBasicMaterial({color:0x8ff4ff});
+const eL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), eyeMat);
+eL.position.set(-0.32, 0.12, 0.95); orb.add(eL);
+const eR = eL.clone(); eR.position.x = 0.32; orb.add(eR);
+const ringMat = new THREE.MeshBasicMaterial({color:0x67f0ff, transparent:true, opacity:0.55});
+const r1 = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.02, 8, 100), ringMat);
+scene.add(r1);
+const r2 = new THREE.Mesh(new THREE.TorusGeometry(1.75, 0.012, 8, 100),
+  new THREE.MeshBasicMaterial({color:0xff5fa2, transparent:true, opacity:0.35}));
+scene.add(r2);
+let t = 0, mx = 0, my = 0;
+document.addEventListener('pointermove', e => { mx = (e.clientX/innerWidth - .5)*2; my = (e.clientY/innerHeight - .5)*2; });
+document.addEventListener('touchmove', e => { const t0=e.touches[0]; mx=(t0.clientX/innerWidth-.5)*2; my=(t0.clientY/innerHeight-.5)*2; }, {passive:true});
+function anim(){
+  requestAnimationFrame(anim);
+  t += 0.016;
+  orb.position.y = Math.sin(t*1.4)*0.08;
+  orb.rotation.y += (mx*0.6 - orb.rotation.y)*0.06;
+  orb.rotation.x += (my*0.4 - orb.rotation.x)*0.06;
+  r1.rotation.x = t*0.5; r1.rotation.y = t*0.3;
+  r2.rotation.x = -t*0.4; r2.rotation.z = t*0.25;
+  const p = 1 + Math.sin(t*3)*0.02; orb.scale.set(p,p,p);
+  renderer.render(scene, cam);
+}
+anim();
+addEventListener('resize', ()=>{ cam.aspect = innerWidth/innerHeight; cam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+</script>
+</body></html>

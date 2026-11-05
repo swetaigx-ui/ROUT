@@ -131,6 +131,8 @@ class VoiceEngine(
      * not when no backend is configured. Honest status + text reply instead.
      */
     var deviceVoiceEnabled: Boolean = false
+    /** Opt-in: use Vosk offline STT (model downloaded in Settings) instead of the system recognizer. */
+    var offlineSttPreferred: Boolean = false
     var backendUrl: String = ""
     var voiceName: String = "Achernar"
     var deviceTokenProvider: () -> String = { "" }
@@ -211,10 +213,35 @@ class VoiceEngine(
         if (_state.value == AssistantState.SPEAKING) setState(AssistantState.IDLE)
     }
 
+    private var voskActive = false
+
+    private fun startVosk(): Boolean {
+        val eng = com.rout.aiassistant.features.offlinestt.OfflineSttEngine
+        if (!eng.loadModel(context)) return false
+        val ok = eng.start(context, object : org.vosk.android.RecognitionListener {
+            override fun onPartialResult(hypothesis: String?) {
+                _partial.value = org.json.JSONObject(hypothesis ?: "{}").optString("partial")
+            }
+            override fun onResult(hypothesis: String?) {
+                handleFinalText(org.json.JSONObject(hypothesis ?: "{}").optString("text"))
+            }
+            override fun onFinalResult(hypothesis: String?) {
+                handleFinalText(org.json.JSONObject(hypothesis ?: "{}").optString("text"))
+            }
+            override fun onError(e: Exception?) { setState(AssistantState.IDLE) }
+            override fun onTimeout() { setState(AssistantState.IDLE) }
+        })
+        if (ok) { voskActive = true; setState(AssistantState.LISTENING) }
+        return ok
+    }
+
     fun startListening() {
         if (!recognitionAvailable) { setState(AssistantState.ERROR); return }
         if (micPaused || liveRunning()) return
         stopSpeaking()
+        if ((offlineSttPreferred || com.rout.aiassistant.features.offlinestt.OfflineSttEngine.isEnabled(context)) && com.rout.aiassistant.features.offlinestt.OfflineSttEngine.isReady(context)) {
+            if (startVosk()) return
+        }
         if (recognizer == null) {
             // The name-waiting session prefers the ON-DEVICE recognizer (Android 13+, only when the system reports it available).
             // Otherwise the system default recognizer is used and is labelled honestly: it may send audio to the cloud.
@@ -244,6 +271,7 @@ class VoiceEngine(
     }
 
     fun stopListening() {
+        if (voskActive) { com.rout.aiassistant.features.offlinestt.OfflineSttEngine.stop(); voskActive = false }
         try { recognizer?.stopListening() } catch (_: Exception) {}
         if (_state.value == AssistantState.LISTENING) setState(AssistantState.IDLE)
         _rms.value = 0f
@@ -277,9 +305,28 @@ class VoiceEngine(
 
     fun stopWakeSession() {
         _wakeSession.value = false
+        if (voskActive) { com.rout.aiassistant.features.offlinestt.OfflineSttEngine.stop(); voskActive = false }
         try { recognizer?.destroy() } catch (_: Exception) {}
         recognizer = null; recognizerOnDevice = false
         stopListening()
+    }
+
+    internal fun handleFinalText(said: String) {
+        _partial.value = ""
+        if (said.isEmpty()) { setState(AssistantState.IDLE); return }
+        if (_wakeSession.value) {
+            val rest = WakeName.match(said, wakeName)
+            if (rest == null) { setState(AssistantState.IDLE); return } // not addressed to the assistant; keep loop
+            if (rest.isEmpty()) {
+                if (onNameOnly?.invoke() == true) return
+                speak(LiveHandoff.NAME_ONLY_UNAVAILABLE); return
+            }
+            setState(AssistantState.PROCESSING)
+            onFinalText(rest)
+        } else {
+            setState(AssistantState.PROCESSING)
+            onFinalText(said)
+        }
     }
 
     private val listener = object : RecognitionListener {
@@ -308,22 +355,7 @@ class VoiceEngine(
         }
         override fun onResults(results: Bundle?) {
             val texts = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-            val said = texts?.firstOrNull()?.trim().orEmpty()
-            _partial.value = ""
-            if (said.isEmpty()) { setState(AssistantState.IDLE); return }
-            if (_wakeSession.value) {
-                val rest = WakeName.match(said, wakeName)
-                if (rest == null) { setState(AssistantState.IDLE); return } // not addressed to the assistant; keep loop
-                if (rest.isEmpty()) {
-                    if (onNameOnly?.invoke() == true) return
-                    speak(LiveHandoff.NAME_ONLY_UNAVAILABLE); return
-                }
-                setState(AssistantState.PROCESSING)
-                onFinalText(rest)
-            } else {
-                setState(AssistantState.PROCESSING)
-                onFinalText(said)
-            }
+            handleFinalText(texts?.firstOrNull()?.trim().orEmpty())
         }
         override fun onPartialResults(partialResults: Bundle?) {
             val texts = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)

@@ -144,6 +144,7 @@ class MainActivity : ComponentActivity() {
                     composable("codestudio") { com.rout.aiassistant.features.tools.CodeStudioScreen() }
                     composable("mirror") { com.rout.aiassistant.features.tools.MirrorScreen() }
                     composable("handmagic") { com.rout.aiassistant.features.gesture.HandMagicScreen() }
+                    composable("avatar") { com.rout.aiassistant.features.avatar.AvatarScreen() }
                 }
             }
         }
