@@ -23,6 +23,31 @@ Hinglish and English. Package: `com.rout.aiassistant`.
 
 - Weather via Open-Meteo (free, keyless): real data, never invented
 
+## New in 0.9.0 (MAX feature parity)
+
+On-device, privacy-gated (off by default, opt-in in Settings):
+- **Phone Dhundo**: ring/locate your phone by voice
+- **Anti-theft**: SMS triggers from a trusted number (ring/lock/locate)
+- **Intruder camera**: front-camera photo on wrong unlock attempts
+- **App Lock**: lock selected apps with a PIN
+- **Hand Magic**: gesture control via front camera (MediaPipe)
+- **Screen text/screenshot to AI**: share screen content to ROUT, only when you choose
+- **Offline speech-to-text**: Vosk small en-in model, fully on-device
+- **Notification read/reply assistant**: reads/replies only after you opt in
+
+Everything works, no faked data:
+- **Translator**: 15+ Indian/global languages (ML Kit, on-device after model download)
+- **Dynamic Island**: mini bar for now-playing/timers/voice, with Settings toggle
+- **Morning Briefing**: weather + calendar + tasks + quote in Hinglish, on demand or scheduled
+- **Smart Alarm**: wakes you within a smart window using sleep pattern + weather
+- **3D Avatar**: animated on-device WebGL companion on the home screen
+- **Code Studio**: write/run 40+ languages via the free Piston API (needs internet)
+- **Scanner**: on-device OCR + document scan (ML Kit)
+- **Video Editor**: trim, filters, crop, mute, speed, watermark (Media3 Transformer)
+- **Voice calls**: "call karke baat karo" style continuous voice conversations
+- **Live conversation commands**: answer/end calls, speaker toggle by voice
+- **MAX-style home screen**: glass cards, quick actions, dynamic island, ask bar
+
 ## Setup-required states (honest, not faked)
 
 - **ROUT AI answers** (general questions, explanations, code help): requires the ROUT
