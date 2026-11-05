@@ -139,6 +139,11 @@ class MainActivity : ComponentActivity() {
                     composable("memory") { MemoryScreen(vm, nav) }
                     composable("history") { HistoryScreen(vm, nav) }
                     composable("settings") { SettingsScreen(vm, nav) }
+                    composable("translator") { com.rout.aiassistant.features.translate.TranslatorScreen() }
+                    composable("scanner") { com.rout.aiassistant.features.tools.ScannerScreen() }
+                    composable("codestudio") { com.rout.aiassistant.features.tools.CodeStudioScreen() }
+                    composable("mirror") { com.rout.aiassistant.features.tools.MirrorScreen() }
+                    composable("handmagic") { com.rout.aiassistant.features.gesture.HandMagicScreen() }
                 }
             }
         }

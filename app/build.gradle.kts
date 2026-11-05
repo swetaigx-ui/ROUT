@@ -96,6 +96,8 @@ dependencies {
     implementation("com.google.mediapipe:tasks-vision:0.10.14")
     // Vosk offline speech recognition
     implementation("com.alphacephei:vosk-android:0.3.47")
+    // On-device JavaScript for Code Studio
+    implementation("com.faendir.rhino:rhino-android:1.6.0")
     // Media3 transformer for video editing
     val media3 = "1.6.1"
     implementation("androidx.media3:media3-transformer:$media3")

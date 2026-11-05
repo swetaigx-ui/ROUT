@@ -556,7 +556,8 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 // --- Screens ---
                 SettingsCard("Screens", onY = { sectionOffsets["Screens"] = it }) {
                     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history").forEach { (label, route) ->
+                        listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history",
+                            "Translator" to "translator", "Scanner" to "scanner", "Code Studio" to "codestudio", "Mirror" to "mirror", "Hand Magic" to "handmagic").forEach { (label, route) ->
                             RefChip(label, selected = false) { nav.navigate(route) }
                         }
                     }
