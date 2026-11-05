@@ -78,3 +78,10 @@ Hard rules: every button works; no faked data; privacy-gated features DEFAULT OF
 - Test infra: full-suite single run OOMs daemon on 2GB box; use /tmp/lowmem3.gradle + -Dorg.gradle.jvmargs="-Xmx512m -XX:MaxMetaspaceSize=384m", sliced --tests runs. Logs /tmp/test6-8.log all EXIT=0.
 - Uncommitted changes: ProtectPrefs fallback, Band karo rename, MaxHome shimmer credit, 2 test fixes, MaxHomeRender090Test.
 - NEXT RUN: commit tests+fixes -> final full assembleRelease (green check) -> upload APK+source ZIP to Drive -> push GitHub -> final report to parent.
+
+## 06:40 DELIVERED
+- Final build green (run-final.log EXIT=0). APK: versionCode 63 / 0.9.0, 71,549,730 bytes, signed ROUT release key.
+- GitHub: main pushed (7969959..3bfce7c), tag v0.9.0, Release 434647417 with APK asset (state=uploaded, size verified): https://github.com/swetaigx-ui/ROUT/releases/tag/v0.9.0
+- Drive: ROUT-0.9.0-source.tar.gz (7.3MB) uploaded private to root, id 19EHI1okBDEdFTV-tEZVQB7cOHQSta6kj.
+- Drive APK upload NOT possible: tools upload caps at 25MB; cloud browser has no file-upload action. Offered split-parts fallback to parent; GitHub release link is the install path.
+- Full closeout report sent to parent 06:40. TASK COMPLETE pending parent reply on Drive-split question.

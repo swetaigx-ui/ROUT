@@ -18,6 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -32,86 +35,77 @@ import com.rout.aiassistant.voice.AssistantState
 import kotlinx.coroutines.launch
 
 /**
- * Home: MAX-style design (Gyan's 2026-11-05 reference: "pura same-to-same"),
- * with ROUT's own identity. Dark glass, glowing blue orb with eyes,
- * "Hi <name>, I'm ROUT", stats strip, quick chips, bottom Ask bar + pink mic FAB,
- * left drawer with all sections, "Powered by Gyan" credit.
+ * ROUT home - Gemini-style layout in Gyan's liquid-glass language:
+ * hamburger + "ROUT v" persona picker + new-chat + profile avatar; center RGB
+ * sparkle + clean greeting; suggestion rows; Chat/Task pill + glass input bar
+ * with plus / mic / waveform. Translucent glass cards, moving RGB glow,
+ * everything below the camera cutout, "Powered by Gyan" shimmer credit.
  */
 private val MaxBg = Color(0xFF07070F)
-private val MaxCard = Color(0xC2141424)
-private val MaxCardLine = Color(0x1AFFFFFF)
+private val MaxGlass = Color(0x14FFFFFF)
+private val MaxGlassLine = Color(0x2EFFFFFF)
 private val MaxInk = Color(0xFFEEEEF6)
 private val MaxDim = Color(0xFF8F8CA8)
 private val MaxCyan = Color(0xFF5FC8FF)
 private val MaxPink = Color(0xFFFF3E8A)
 
+private fun Modifier.glass(shape: RoundedCornerShape) = this
+    .clip(shape)
+    .background(Brush.verticalGradient(listOf(Color(0x17FFFFFF), Color(0x09FFFFFF))))
+    .border(1.dp, MaxGlassLine, shape)
+
 @Composable
-private fun MaxOrb(state: AssistantState, rms: Float, sizeDp: Float, onTap: () -> Unit) {
-    val inf = rememberInfiniteTransition(label = "orb")
-    val breathe by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b")
-    val glowPulse = when (state) {
-        AssistantState.LISTENING -> 1f + (rms.coerceIn(0f, 10f) / 10f) * 0.25f
-        AssistantState.SPEAKING -> 1.12f + breathe * 0.06f
-        AssistantState.PROCESSING -> 1.05f + breathe * 0.04f
-        else -> 1f + breathe * 0.03f
-    }
-    val blink by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(3400, easing = LinearEasing), RepeatMode.Restart), label = "blink")
-    val eyeH = if (blink > 0.94f) 0.15f else 1f
-    Canvas(Modifier.size(sizeDp.dp).clickable(onClick = onTap)) {
-        val c = center; val R = size.minDimension / 2f
-        // outer glow
-        drawCircle(
-            Brush.radialGradient(listOf(Color(0x662F7BFF), Color(0x22124BB8), Color.Transparent), c, R * glowPulse),
-            R * glowPulse, c)
-        // core sphere
-        drawCircle(
-            Brush.radialGradient(listOf(Color(0xFF3D5A80), Color(0xFF16233F), Color(0xFF0A1020)),
-                Offset(c.x - R * 0.25f, c.y - R * 0.3f), R * 1.15f),
-            R * 0.62f, c)
-        // eyes
-        val eyeR = R * 0.075f
-        val eyeY = c.y - R * 0.02f
-        for (dx in listOf(-R * 0.22f, R * 0.22f)) {
-            drawCircle(Color(0xFF9FE8FF), eyeR, Offset(c.x + dx, eyeY))
-            if (eyeH < 1f) drawRect(Color(0xFF16233F),
-                Offset(c.x + dx - eyeR, eyeY - eyeR), androidx.compose.ui.geometry.Size(eyeR * 2, eyeR * 2 * (1 - eyeH)))
+private fun rgbBrush(): Brush {
+    val t = rememberInfiniteTransition(label = "rgb")
+        .animateFloat(0f, 600f, infiniteRepeatable(tween(3800, easing = LinearEasing)), label = "x")
+    return Brush.linearGradient(
+        listOf(Color(0xFF8B5CF6), MaxCyan, Color(0xFF34D399), MaxPink, Color(0xFF8B5CF6)),
+        start = Offset(t.value - 400f, 0f), end = Offset(t.value, 120f)
+    )
+}
+
+@Composable
+private fun Sparkle(sizeDp: Float) {
+    val t = rememberInfiniteTransition(label = "sp").animateFloat(0f, 360f, infiniteRepeatable(tween(6000, easing = LinearEasing)), label = "r")
+    Canvas(Modifier.size(sizeDp.dp)) {
+        val c = center; val r = size.minDimension / 2f
+        val brush = Brush.sweepGradient(
+            listOf(Color(0xFFFF4D6D), Color(0xFF5FC8FF), Color(0xFF34D399), Color(0xFF8B5CF6), Color(0xFFFF4D6D)),
+            Offset(c.x + r * 0.5f * kotlin.math.cos(Math.toRadians(t.value.toDouble())).toFloat(),
+                   c.y + r * 0.5f * kotlin.math.sin(Math.toRadians(t.value.toDouble())).toFloat()))
+        val path = Path().apply {
+            moveTo(c.x, c.y - r)
+            quadraticTo(c.x + r * 0.18f, c.y - r * 0.18f, c.x + r, c.y)
+            quadraticTo(c.x + r * 0.18f, c.y + r * 0.18f, c.x, c.y + r)
+            quadraticTo(c.x - r * 0.18f, c.y + r * 0.18f, c.x - r, c.y)
+            quadraticTo(c.x - r * 0.18f, c.y - r * 0.18f, c.x, c.y - r)
+            close()
         }
+        drawPath(path, brush)
     }
 }
 
 @Composable
-private fun MaxStat(label: String, value: String) {
-    Column(
-        Modifier.width(92.dp).clip(RoundedCornerShape(16.dp)).background(MaxCard)
-            .border(1.dp, MaxCardLine, RoundedCornerShape(16.dp)).padding(vertical = 8.dp, horizontal = 10.dp)
-    ) {
-        Text(label.uppercase(), color = MaxDim, fontSize = 9.sp, letterSpacing = 1.sp)
-        Text(value, color = MaxInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun MaxChip(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun DrawerRow(icon: ImageVector, label: String, highlight: Boolean = false, onClick: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(50)).background(MaxCard)
-            .border(1.dp, MaxCardLine, RoundedCornerShape(50))
-            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth()
+            .then(if (highlight) Modifier.glass(RoundedCornerShape(50)) else Modifier.clip(RoundedCornerShape(12.dp)))
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, label, tint = MaxInk, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, color = MaxInk, fontSize = 13.sp)
+        Icon(icon, label, tint = if (highlight) MaxCyan else MaxInk, modifier = Modifier.size(19.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = MaxInk, fontSize = 14.sp)
     }
 }
 
 @Composable
 fun MaxHomeScreen(vm: MainViewModel, nav: NavController) {
     val state by vm.assistantState.collectAsState()
-    val rms by vm.rms.collectAsState()
     val userName by vm.userName.collectAsState()
     val persona by vm.personaMode.collectAsState()
-    val online by vm.online.collectAsState()
-    val weatherCity by vm.weatherCity.collectAsState()
+    val speechRate by vm.prefs.speechRate.collectAsState(initial = 1.0f)
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -126,140 +120,293 @@ fun MaxHomeScreen(vm: MainViewModel, nav: NavController) {
     }
     val micTap = { if (!micGranted) { pendingMicAction = { vm.onMicTap() }; micLauncher.launch(Manifest.permission.RECORD_AUDIO) } else vm.onMicTap() }
 
+    var personaPicker by remember { mutableStateOf(false) }
+    var accountSheet by remember { mutableStateOf(false) }
+    var toolsSheet by remember { mutableStateOf(false) }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = Color(0xF20B0B16), modifier = Modifier.width(280.dp)) {
-                Column(Modifier.fillMaxHeight().padding(18.dp)) {
-                    Text("ROUT", color = MaxInk, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(16.dp))
-                    val items = listOf(
-                        Triple("New chat", Icons.Default.Add, "chat"),
-                        Triple("Chat", Icons.Default.Email, "chat"),
-                        Triple("Tasks", Icons.Default.CheckCircle, "tasks"),
-                        Triple("Notes", Icons.Default.Edit, "notes"),
-                        Triple("History", Icons.Default.Refresh, "history"),
-                        Triple("Memory", Icons.Default.Star, "memory"),
-                        Triple("Translator", Icons.Default.PlayArrow, "translator"),
-                        Triple("Scanner", Icons.Default.Search, "scanner"),
-                        Triple("Code Studio", Icons.Default.Build, "codestudio"),
-                        Triple("Mirror", Icons.Default.Face, "mirror"),
-                        Triple("Video Editor", Icons.Default.PlayArrow, "videoeditor"),
-                        Triple("Hand Magic", Icons.Default.ThumbUp, "handmagic"),
-                        Triple("3D Avatar", Icons.Default.AccountCircle, "avatar"),
-                        Triple("Settings", Icons.Default.Settings, "settings")
-                    )
+            ModalDrawerSheet(drawerContainerColor = Color(0xF50B0B16), modifier = Modifier.width(290.dp)) {
+                Column(Modifier.fillMaxHeight().padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("ROUT", color = MaxInk, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.Default.Search, "Search chats", tint = MaxInk, modifier = Modifier.size(22.dp)
+                            .clickable { scope.launch { drawerState.close() }; nav.navigate("history") })
+                        Spacer(Modifier.width(16.dp))
+                        Icon(Icons.Default.Close, "Close", tint = MaxInk, modifier = Modifier.size(22.dp)
+                            .clickable { scope.launch { drawerState.close() } })
+                    }
+                    Spacer(Modifier.height(14.dp))
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        items.forEach { (label, icon, route) ->
-                            Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                    .clickable { scope.launch { drawerState.close() }; nav.navigate(route) }
-                                    .padding(vertical = 10.dp, horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(icon, label, tint = MaxInk, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(12.dp))
-                                Text(label, color = MaxInk, fontSize = 15.sp)
-                            }
+                        DrawerRow(Icons.Default.Edit, "New chat", highlight = true) { scope.launch { drawerState.close() }; nav.navigate("chat") }
+                        DrawerRow(Icons.Default.Menu, "Library") { scope.launch { drawerState.close() }; nav.navigate("history") }
+                        DrawerRow(Icons.Default.Notifications, "Scheduled") { scope.launch { drawerState.close() }; nav.navigate("tasks") }
+                        DrawerRow(Icons.Default.Settings, "Customize") { scope.launch { drawerState.close() }; nav.navigate("settings") }
+                        DrawerRow(Icons.Default.PlayArrow, "Videos") { scope.launch { drawerState.close() }; nav.navigate("videoeditor") }
+                        Spacer(Modifier.height(18.dp))
+                        Text("Notes", color = MaxDim, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 8.dp))
+                        Spacer(Modifier.height(6.dp))
+                        DrawerRow(Icons.Default.Add, "New note") { scope.launch { drawerState.close() }; nav.navigate("notes") }
+                        Spacer(Modifier.height(18.dp))
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("All", color = MaxDim, fontSize = 13.sp)
+                            Spacer(Modifier.weight(1f))
+                            Icon(Icons.Default.List, "Filter", tint = MaxDim, modifier = Modifier.size(18.dp)
+                                .clickable { scope.launch { drawerState.close() }; nav.navigate("history") })
                         }
+                        Spacer(Modifier.height(6.dp))
+                        DrawerRow(Icons.Default.Refresh, "History") { scope.launch { drawerState.close() }; nav.navigate("history") }
+                        DrawerRow(Icons.Default.Star, "Memory") { scope.launch { drawerState.close() }; nav.navigate("memory") }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(30.dp).clip(CircleShape).background(
-                            Brush.sweepGradient(listOf(Color(0xFF5FC8FF), Color(0xFF8B5CF6), Color(0xFF5FC8FF)))),
+                    Row(
+                        Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp)).padding(10.dp)
+                            .clickable { scope.launch { drawerState.close() }; nav.navigate("settings") },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(34.dp).clip(CircleShape).background(
+                            Brush.sweepGradient(listOf(MaxCyan, Color(0xFF8B5CF6), MaxCyan))),
                             contentAlignment = Alignment.Center
-                        ) { Text((userName.ifBlank { "G" }).first().uppercase(), color = Color(0xFF0A1020), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                        ) { Text((userName.ifBlank { "G" }).first().uppercase(), color = Color.White, fontWeight = FontWeight.Bold) }
                         Spacer(Modifier.width(10.dp))
-                        Text(userName.ifBlank { "Gyan" }, color = MaxInk, fontSize = 14.sp)
+                        Column(Modifier.weight(1f)) {
+                            Text(userName.ifBlank { "Gyan" }, color = MaxInk, fontSize = 14.sp)
+                            Text("Powered by Gyan", color = MaxDim, fontSize = 10.sp)
+                        }
+                        Icon(Icons.Default.Settings, "Settings", tint = MaxDim, modifier = Modifier.size(18.dp))
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Powered by Gyan", color = MaxDim, fontSize = 11.sp)
                 }
             }
         }
     ) {
         Column(Modifier.fillMaxSize().background(MaxBg).statusBarsPadding().navigationBarsPadding().padding(horizontal = 18.dp)) {
-            // Top bar
+            // Top bar: hamburger + persona dropdown + new chat + avatar
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Menu, "Menu", tint = MaxInk, modifier = Modifier.size(26.dp).clickable { scope.launch { drawerState.open() } })
-                Spacer(Modifier.width(14.dp))
-                Column {
+                Icon(Icons.Default.Menu, "Menu", tint = MaxInk, modifier = Modifier.size(24.dp).clickable { scope.launch { drawerState.open() } })
+                Spacer(Modifier.width(16.dp))
+                Row(Modifier.clip(RoundedCornerShape(50)).clickable { personaPicker = true }.padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
                     Text("ROUT", color = MaxInk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text(com.rout.aiassistant.ai.Personas.byId(persona).label + " · Fast", color = MaxDim, fontSize = 11.sp)
+                    Text("  " + com.rout.aiassistant.ai.Personas.byId(persona).label, color = MaxDim, fontSize = 13.sp)
+                    Icon(Icons.Default.ArrowDropDown, "pick", tint = MaxDim, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.weight(1f))
-                Icon(Icons.Default.Settings, "Settings", tint = MaxInk, modifier = Modifier.size(24.dp).clickable { nav.navigate("settings") })
+                Icon(Icons.Default.Edit, "New chat", tint = MaxInk, modifier = Modifier.size(21.dp).clickable { nav.navigate("chat") })
+                Spacer(Modifier.width(16.dp))
+                Box(Modifier.size(30.dp).clip(CircleShape).background(
+                    Brush.sweepGradient(listOf(MaxCyan, Color(0xFF8B5CF6), MaxCyan)))
+                    .clickable { accountSheet = true },
+                    contentAlignment = Alignment.Center
+                ) { Text((userName.ifBlank { "G" }).first().uppercase(), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             }
-            Spacer(Modifier.height(26.dp))
-            // Orb
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                MaxOrb(state, rms, 190f, micTap)
-            }
-            Spacer(Modifier.height(18.dp))
-            Text(
-                when (state) {
-                    AssistantState.LISTENING -> "Sun raha hoon ${userName.ifBlank { "Gyan" }}…"
-                    AssistantState.SPEAKING -> "Theek hai ${userName.ifBlank { "Gyan" }}, baad mein baat karte hain!"
-                    AssistantState.PROCESSING -> "Soch raha hoon…"
-                    else -> "Hi ${userName.ifBlank { "Gyan" }}, I'm ROUT"
-                },
-                color = MaxInk, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-            Text("Ask anything, or tap for tools", color = MaxDim, fontSize = 13.sp,
-                modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            Spacer(Modifier.height(22.dp))
-            // Stats strip
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
-                MaxStat("Weather", weatherCity.ifBlank { "Set city" })
-                MaxStat("Today", if (online) "Online" else "Offline")
-                MaxStat("Mode", com.rout.aiassistant.ai.Personas.byId(persona).label.split(" ").first())
-            }
-            Spacer(Modifier.height(18.dp))
-            // Quick chips
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
-                MaxChip(Icons.Default.PlayArrow, "Video") { nav.navigate("videoeditor") }
-                MaxChip(Icons.Default.Search, "Scanner") { nav.navigate("scanner") }
-                MaxChip(Icons.Default.Build, "Code") { nav.navigate("codestudio") }
+
+            Spacer(Modifier.weight(1f))
+            // Center: sparkle + greeting
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Sparkle(30f)
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    when (state) {
+                        AssistantState.LISTENING -> "Sun raha hoon ${userName.ifBlank { "Gyan" }}..."
+                        AssistantState.SPEAKING -> "Ye raha jawab!"
+                        AssistantState.PROCESSING -> "Soch raha hoon..."
+                        else -> "Kya explore karein aaj,\n${userName.ifBlank { "Gyan" }}?"
+                    },
+                    fontSize = 26.sp, fontWeight = FontWeight.SemiBold,
+                    style = TextStyle(brush = rgbBrush()),
+                    modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 34.sp
+                )
             }
             Spacer(Modifier.weight(1f))
-            // Bottom ask bar + mic FAB
-            var text by remember { mutableStateOf("") }
-            Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+
+            // Suggestion rows
+            val suggestions = listOf(
+                Triple(Icons.Default.PlayArrow, "Video edit karo", "videoeditor"),
+                Triple(Icons.Default.Search, "Document scan karo", "scanner"),
+                Triple(Icons.Default.Build, "Code likho aur chalao", "codestudio")
+            )
+            suggestions.forEach { (icon, label, route) ->
                 Row(
-                    Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(26.dp)).background(MaxCard)
-                        .border(1.dp, MaxCardLine, RoundedCornerShape(26.dp)).padding(horizontal = 18.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .clickable { nav.navigate(route) }.padding(vertical = 10.dp, horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Add, "plus", tint = MaxDim, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Box(Modifier.weight(1f)) {
-                        if (text.isBlank()) Text("Ask ROUT", color = MaxDim, fontSize = 15.sp)
-                        BasicTextField(text, { text = it }, textStyle = TextStyle(color = MaxInk, fontSize = 15.sp),
-                            modifier = Modifier.fillMaxWidth())
+                    Box(Modifier.size(30.dp).glass(RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+                        Icon(icon, label, tint = MaxCyan, modifier = Modifier.size(15.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(label, color = MaxInk, fontSize = 15.sp)
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            // Chat / Task pill
+            var taskMode by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                listOf("Chat" to false, "Task" to true).forEach { (label, isTask) ->
+                    val sel = taskMode == isTask
+                    Text(label, color = if (sel) MaxInk else MaxDim, fontSize = 14.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .then(if (sel) Modifier.glass(RoundedCornerShape(50)) else Modifier)
+                            .clickable { taskMode = isTask }
+                            .padding(horizontal = 18.dp, vertical = 7.dp))
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            // Input bar: plus + field + mic + waveform
+            var text by remember { mutableStateOf("") }
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 10.dp).glass(RoundedCornerShape(28.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Add, "Tools", tint = MaxDim, modifier = Modifier.size(22.dp).clickable { toolsSheet = true })
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f)) {
+                    if (text.isBlank()) Text(if (taskMode) "Naya task likho..." else "Try @ for more", color = MaxDim, fontSize = 15.sp)
+                    BasicTextField(text, { text = it }, textStyle = TextStyle(color = MaxInk, fontSize = 15.sp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
+                            if (text.isNotBlank()) {
+                                if (taskMode) { vm.addTask(text); vm.setBanner("Task added: $text") } else vm.onUserText(text, false)
+                                text = ""
+                            }
+                        }))
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(Modifier.size(24.dp).clickable { micTap() }, contentAlignment = Alignment.Center) {
+                    Canvas(Modifier.size(15.dp)) {
+                        val w = size.width; val h = size.height; val c = MaxDim
+                        drawRoundRect(c, Offset(w * 0.32f, 0f), Size(w * 0.36f, h * 0.55f), CornerRadius(w * 0.18f))
+                        drawArc(c, 0f, 180f, false, Offset(w * 0.14f, h * 0.28f), Size(w * 0.72f, h * 0.5f), style = Stroke(w * 0.1f))
+                        drawLine(c, Offset(w * 0.5f, h * 0.78f), Offset(w * 0.5f, h * 0.95f), strokeWidth = w * 0.1f)
+                        drawLine(c, Offset(w * 0.3f, h * 0.97f), Offset(w * 0.7f, h * 0.97f), strokeWidth = w * 0.1f)
                     }
                 }
-                Spacer(Modifier.width(12.dp))
-                Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(MaxPink).clickable {
-                        if (text.isNotBlank()) { vm.onUserText(text, false); text = "" } else micTap()
-                    },
-                    contentAlignment = Alignment.Center
-                ) { Icon(Icons.Default.Call, "mic", tint = Color.White, modifier = Modifier.size(22.dp)) }
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.size(36.dp).clip(CircleShape).background(MaxCyan).clickable {
+                    if (text.isNotBlank()) {
+                        if (taskMode) { vm.addTask(text); vm.setBanner("Task added: $text") } else vm.onUserText(text, false)
+                        text = ""
+                    } else micTap()
+                }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Send, "Go", tint = Color(0xFF0B0B16), modifier = Modifier.size(17.dp))
+                }
             }
             // Powered by Gyan shimmer credit
-            val shimmerShift by rememberInfiniteTransition(label = "credit").animateFloat(
-                0f, 500f, infiniteRepeatable(tween(2400, easing = LinearEasing)), label = "sh"
-            )
-            Text(
-                "Powered by Gyan",
-                fontSize = 11.sp,
-                style = TextStyle(brush = Brush.linearGradient(
-                    listOf(MaxDim, MaxInk, MaxDim),
-                    start = Offset(shimmerShift - 180f, 0f), end = Offset(shimmerShift, 0f)
-                )),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
+            Text("Powered by Gyan", fontSize = 10.sp, style = TextStyle(brush = rgbBrush()),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
+    }
+
+    // Persona picker
+    if (personaPicker) {
+        AlertDialog(
+            onDismissRequest = { personaPicker = false },
+            containerColor = Color(0xF20B0B16),
+            title = null,
+            text = {
+                Column {
+                    com.rout.aiassistant.ai.Personas.ALL.forEach { p ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .clickable { scope.launch { vm.prefs.setPersonaMode(p.id) }; personaPicker = false }
+                            .padding(vertical = 9.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            if (persona == p.id) Icon(Icons.Default.Check, "sel", tint = MaxCyan, modifier = Modifier.size(16.dp))
+                            else Spacer(Modifier.width(16.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(p.label, color = MaxInk, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                if (p.style.isNotBlank()) Text(p.style.take(52) + if (p.style.length > 52) "..." else "", color = MaxDim, fontSize = 11.sp)
+                                else Text("Sab kuch, seedhi baat", color = MaxDim, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Divider(color = MaxGlassLine)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Speech speed", color = MaxInk, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp))
+                    listOf(Triple("Slow", "Aaram se", 0.85f), Triple("Normal", "Balanced", 1.0f), Triple("Fast", "Jaldi jawab", 1.2f)).forEach { (label, sub, rate) ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .clickable { scope.launch { vm.prefs.setSpeechRate(rate) } }
+                            .padding(vertical = 8.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            if (kotlin.math.abs(speechRate - rate) < 0.05f) Icon(Icons.Default.Check, "sel", tint = MaxCyan, modifier = Modifier.size(16.dp))
+                            else Spacer(Modifier.width(16.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(label, color = MaxInk, fontSize = 14.sp)
+                                Text(sub, color = MaxDim, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    // Account sheet
+    if (accountSheet) {
+        AlertDialog(
+            onDismissRequest = { accountSheet = false },
+            containerColor = Color(0xF20B0B16),
+            title = null,
+            text = {
+                Column {
+                    Row(Modifier.fillMaxWidth().glass(RoundedCornerShape(18.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(40.dp).clip(CircleShape).background(
+                            Brush.sweepGradient(listOf(MaxCyan, Color(0xFF8B5CF6), MaxCyan))),
+                            contentAlignment = Alignment.Center
+                        ) { Text((userName.ifBlank { "G" }).first().uppercase(), color = Color.White, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(userName.ifBlank { "Gyan" }, color = MaxInk, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Powered by Gyan", color = MaxCyan, fontSize = 11.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    DrawerRow(Icons.Default.Settings, "Settings") { accountSheet = false; nav.navigate("settings") }
+                    DrawerRow(Icons.Default.Star, "Memory") { accountSheet = false; nav.navigate("memory") }
+                    DrawerRow(Icons.Default.Refresh, "History") { accountSheet = false; nav.navigate("history") }
+                    Spacer(Modifier.height(6.dp))
+                    Text("ROUT 0.9.1", color = MaxDim, fontSize = 11.sp, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    // Tools sheet (plus button)
+    if (toolsSheet) {
+        AlertDialog(
+            onDismissRequest = { toolsSheet = false },
+            containerColor = Color(0xF20B0B16),
+            title = null,
+            text = {
+                Column {
+                    Text("Tools", color = MaxInk, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                    listOf(
+                        Triple("Translator", Icons.Default.PlayArrow, "translator"),
+                        Triple("Scanner", Icons.Default.Search, "scanner"),
+                        Triple("Code Studio", Icons.Default.Build, "codestudio"),
+                        Triple("Video Editor", Icons.Default.PlayArrow, "videoeditor"),
+                        Triple("Mirror", Icons.Default.Face, "mirror"),
+                        Triple("Hand Magic", Icons.Default.ThumbUp, "handmagic"),
+                        Triple("3D Avatar", Icons.Default.AccountCircle, "avatar"),
+                        Triple("Tasks", Icons.Default.CheckCircle, "tasks"),
+                        Triple("Notes", Icons.Default.Edit, "notes")
+                    ).forEach { (label, icon, route) ->
+                        DrawerRow(icon, label) { toolsSheet = false; nav.navigate(route) }
+                    }
+                }
+            },
+            confirmButton = {}
+        )
     }
 }

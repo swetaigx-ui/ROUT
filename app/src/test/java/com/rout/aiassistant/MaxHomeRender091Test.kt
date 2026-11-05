@@ -16,11 +16,11 @@ import java.io.File
 import java.io.FileOutputStream
 import com.rout.aiassistant.ui.screens.MaxHomeScreen
 
-/** SYNTHETIC render (Robolectric, not a phone): 0.9.0 MAX-style home screen, 1080px-wide viewport. */
+/** SYNTHETIC render (Robolectric, not a phone): 0.9.1 Gemini-style liquid-glass home screen, 1080px-wide viewport. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w393dp-h851dp-port-xxhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class MaxHomeRender090Test {
+class MaxHomeRender091Test {
     @get:Rule val composeRule = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
     @Test
@@ -37,7 +37,7 @@ class MaxHomeRender090Test {
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             decor.draw(android.graphics.Canvas(bmp))
             val dir = File("/home/sandbox/rout/renders").apply { mkdirs() }
-            FileOutputStream(File(dir, "maxhome_090.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            FileOutputStream(File(dir, "maxhome_091.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
 }
