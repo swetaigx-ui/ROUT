@@ -120,7 +120,21 @@ class VoiceEngine(
         })
     }
 
-    fun setState(s: AssistantState) { _state.value = s }
+    fun setState(s: AssistantState) {
+        _state.value = s
+        // Dynamic Island status (only when the user enabled the island and granted overlay)
+        try {
+            val islandOn = context.getSharedPreferences("rout_island", android.content.Context.MODE_PRIVATE).getBoolean("on", false)
+            if (islandOn && com.rout.aiassistant.features.island.DynamicIslandService.canDraw(context)) {
+                when (s) {
+                    AssistantState.LISTENING -> com.rout.aiassistant.features.island.DynamicIslandService.update(context, "Sun raha hoon…", "listening")
+                    AssistantState.PROCESSING -> com.rout.aiassistant.features.island.DynamicIslandService.update(context, "Soch raha hoon…", "working")
+                    AssistantState.SPEAKING -> com.rout.aiassistant.features.island.DynamicIslandService.update(context, "Bol raha hoon…", "speaking")
+                    else -> com.rout.aiassistant.features.island.DynamicIslandService.stopOverlay(context)
+                }
+            }
+        } catch (_: Exception) {}
+    }
 
     /** Natural backend voice. Set when the device is enrolled. */
     var backendSpeaker: BackendSpeaker? = null

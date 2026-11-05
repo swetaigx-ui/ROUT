@@ -557,7 +557,7 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                 SettingsCard("Screens", onY = { sectionOffsets["Screens"] = it }) {
                     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("Notes" to "notes", "Tasks" to "tasks", "Memory" to "memory", "History" to "history",
-                            "Translator" to "translator", "Scanner" to "scanner", "Code Studio" to "codestudio", "Mirror" to "mirror", "Hand Magic" to "handmagic", "3D Avatar" to "avatar").forEach { (label, route) ->
+                            "Translator" to "translator", "Scanner" to "scanner", "Code Studio" to "codestudio", "Mirror" to "mirror", "Hand Magic" to "handmagic", "3D Avatar" to "avatar", "Video Editor" to "videoeditor").forEach { (label, route) ->
                             RefChip(label, selected = false) { nav.navigate(route) }
                         }
                     }
@@ -670,6 +670,20 @@ fun SettingsScreen(vm: MainViewModel, nav: NavController, scrollToEnd: Boolean =
                             com.rout.aiassistant.features.briefing.BriefingScheduler.schedule(pctx, briefTime)
                         }
                         Text("Briefing device voice (TTS) se boli jaati hai - natural voice backend tak limited hai. Weather ke liye Settings mein city save honi chahiye.", color = RefDim, fontSize = 12.sp)
+                    }
+                }
+
+
+                SettingsCard("Dynamic Island", onY = { sectionOffsets["Dynamic Island"] = it }) {
+                    val pctx = context.applicationContext
+                    var islandOn by remember { mutableStateOf(pctx.getSharedPreferences("rout_island", android.content.Context.MODE_PRIVATE).getBoolean("on", false)) }
+                    RefSwitchRow("Dynamic Island overlay", "Screen ke upar top par chhota pill: ROUT sun/bol raha hai dikhta hai. Overlay permission chahiye.", islandOn) { on ->
+                        islandOn = on
+                        pctx.getSharedPreferences("rout_island", android.content.Context.MODE_PRIVATE).edit().putBoolean("on", on).apply()
+                        if (on && !android.provider.Settings.canDrawOverlays(pctx)) {
+                            context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                        if (!on) com.rout.aiassistant.features.island.DynamicIslandService.stopOverlay(pctx)
                     }
                 }
 

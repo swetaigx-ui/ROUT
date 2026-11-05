@@ -398,6 +398,8 @@ class CommandRouter(
         if (raw.isEmpty()) return "Kuch sunai nahi diya. Please try again."
         // Device-protection bundle (phone dhundo, smart alarm, ...) - direct user commands.
         com.rout.aiassistant.features.protect.ProtectCommands.handle(context, raw)?.let { return it }
+        // Call handling (answer/end) via Telecom API.
+        com.rout.aiassistant.features.protect.CallCommands.handle(context, raw)?.let { return it }
         // On-device translator (ML Kit, no upload).
         com.rout.aiassistant.features.translate.TranslateCommands.handle(context, raw)?.let { return it }
         // Clear a shared photo/PDF context.

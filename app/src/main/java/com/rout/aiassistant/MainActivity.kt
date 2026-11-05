@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
                     if (!onboarded) nav.navigate("onboarding") { launchSingleTop = true }
                 }
                 NavHost(navController = nav, startDestination = "home") {
-                    composable("home") { HomeScreen(vm, nav) }
+                    composable("home") { MaxHomeScreen(vm, nav) }
                     composable("chat") { com.rout.aiassistant.ui.screens.ChatScreen(vm, nav) }
                     composable("onboarding") { OnboardingScreen(vm, nav) }
                     composable("notes") { NotesScreen(vm, nav) }
@@ -145,6 +145,7 @@ class MainActivity : ComponentActivity() {
                     composable("mirror") { com.rout.aiassistant.features.tools.MirrorScreen() }
                     composable("handmagic") { com.rout.aiassistant.features.gesture.HandMagicScreen() }
                     composable("avatar") { com.rout.aiassistant.features.avatar.AvatarScreen() }
+                    composable("videoeditor") { com.rout.aiassistant.features.tools.VideoEditorScreen() }
                 }
             }
         }
